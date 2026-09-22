@@ -1,0 +1,741 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-09-06 07:32+0000\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: \n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#: switch_capture_cli.py:282 switch_capture_cli.py:669
+msgid "Chemin d'un fichier YAML de base (surchargé par les autres options)"
+msgstr ""
+
+#: switch_capture_cli.py:289 switch_capture_cli.py:675
+msgid ""
+"Déconseillé en clair : préférez la variable d'environnement "
+"SWITCH_SSH_PASSWORD"
+msgstr ""
+
+#: switch_capture_cli.py:297
+msgid ""
+"Mémorise le mot de passe SSH utilisé dans le trousseau système (libsecret/"
+"GNOME Keyring, jamais en clair sur disque) pour ce couple switch/utilisateur "
+"— les prochains lancements le retrouvent automatiquement sans --ssh-password "
+"ni SWITCH_SSH_PASSWORD. Nécessite le module Python 'keyring' (dépendance "
+"optionnelle)."
+msgstr ""
+
+#: switch_capture_cli.py:307 switch_capture_cli.py:688
+msgid ""
+"Retire du trousseau système le mot de passe précédemment mémorisé pour ce "
+"couple switch/utilisateur."
+msgstr ""
+
+#: switch_capture_cli.py:313
+msgid ""
+"Repli pour --remember-password/--forget-password/le chargement automatique "
+"si le module 'keyring' n'est pas installé (pas de trousseau système, ex. "
+"serveur headless) : chemin d'un fichier KeePass .kdbx existant (jamais créé "
+"par cet outil). Nécessite aussi la variable d'environnement "
+"SWITCH_CAPTURE_KEEPASS_PASSWORD (mot de passe maître) et le module Python "
+"'pykeepass' (dépendance optionnelle). Ignoré si un trousseau système est "
+"disponible."
+msgstr ""
+
+#: switch_capture_cli.py:325 switch_capture_cli.py:699
+msgid ""
+"Force le profil matériel au lieu de l'auto-détection ('display version')"
+msgstr ""
+
+#: switch_capture_cli.py:330
+msgid "Chemin exact du .bin à pousser (prioritaire sur --feature-bin-dir)"
+msgstr ""
+
+#: switch_capture_cli.py:335
+msgid ""
+"Racine du dépôt local de .bin, organisé par <modèle>/<version>/ (def: ./"
+"feature-bin)"
+msgstr ""
+
+#: switch_capture_cli.py:343
+msgid ""
+"'scp' (défaut, recommandé) : transferts SCP à la demande, pas de montage "
+"FUSE. 'sshfs' (legacy) : montage sshfs persistant de la flash (--mount-point)"
+msgstr ""
+
+#: switch_capture_cli.py:354
+msgid "Expression tcpdump-like, ex: 'host 10.0.0.5 and tcp port 22'"
+msgstr ""
+
+#: switch_capture_cli.py:365
+msgid ""
+"Étiquette libre du point de capture (ex: 'client', 'routeur-core', 'serveur-"
+"web') — écrite dans le sidecar de métadonnées pour corréler plusieurs traces "
+"d'un même trafic prises à des points différents"
+msgstr ""
+
+#: switch_capture_cli.py:373
+msgid ""
+"Serveur NTP à configurer sur le switch si son horloge n'est pas déjà "
+"synchronisée"
+msgstr ""
+
+#: switch_capture_cli.py:381
+msgid "Saute complètement la vérification NTP (active par défaut)"
+msgstr ""
+
+#: switch_capture_cli.py:388
+msgid ""
+"'fifo' (défaut) : FIFO + Wireshark auto-lancé, une capture live à la fois. "
+"'tap' : écrit dans une interface réseau virtuelle TAP (--tap-interface), "
+"pour observer plusieurs captures simultanées dans une même instance "
+"Wireshark. 'rpcap' : packet-capture remote natif Comware — Wireshark se "
+"connecte directement au switch en réseau (rpcap://...), sans fichier ni FIFO/"
+"TAP local (disponibilité selon modèle/version, voir CAPTURE-METHODS.md)"
+msgstr ""
+
+#: switch_capture_cli.py:399
+msgid "Nom de l'interface TAP à utiliser en mode --output-mode tap (ex: vcap1)"
+msgstr ""
+
+#: switch_capture_cli.py:406
+msgid ""
+"Supprime l'interface TAP à l'arrêt de la capture (par défaut : laissée en "
+"place)"
+msgstr ""
+
+#: switch_capture_cli.py:414
+msgid ""
+"Lance automatiquement Wireshark sur l'interface TAP dès qu'elle est prête "
+"(désactivé par défaut, l'utilisateur le fait alors lui-même). N'a d'effet "
+"qu'en --output-mode tap. Avec plusieurs captures simultanées, ouvre une "
+"fenêtre par capture au lieu d'une seule observant toutes les interfaces — "
+"voir USAGE.md"
+msgstr ""
+
+#: switch_capture_cli.py:425
+msgid ""
+"Port du service RPCAP côté switch en mode --output-mode rpcap (défaut "
+"Comware : 2002)"
+msgstr ""
+
+#: switch_capture_cli.py:433
+msgid ""
+"Réinjecte les trames d'un fichier .pcap rapatrié en respectant "
+"approximativement l'écart de temps d'origine entre elles, au lieu de les "
+"écrire aussi vite que possible. N'a d'effet qu'en --output-mode tap. "
+"Plafonné par --tap-pace-max-gap"
+msgstr ""
+
+#: switch_capture_cli.py:443
+msgid ""
+"Délai maximal en secondes entre deux trames avec --tap-pace-playback "
+"(défaut : 2.0)"
+msgstr ""
+
+#: switch_capture_cli.py:452
+msgid ""
+"N'exclut plus le trafic SSH/SCP outil<->switch de la capture (exclu par "
+"défaut, en plus du filtre --capture-filter le cas échéant). Sans effet en --"
+"output-mode rpcap"
+msgstr ""
+
+#: switch_capture_cli.py:462
+msgid ""
+"Sens du trafic capté par packet-capture : 'bidirection' (défaut, entrant + "
+"sortant), 'inbound' (entrant seul, comportement Comware par défaut sans ce "
+"mot-clé) ou 'outbound' (sortant seul). S'applique à --output-mode fifo/tap/"
+"rpcap"
+msgstr ""
+
+#: switch_capture_cli.py:475
+msgid ""
+"Archive les fichiers dans --archive-dir au format .pcap classique d'origine, "
+"sans les convertir en .pcapng (conversion activée par défaut). Sans effet si "
+"--archive-dir n'est pas fourni"
+msgstr ""
+
+#: switch_capture_cli.py:503
+msgid "Orchestrateur de capture packet-capture pour switches HPE Comware"
+msgstr ""
+
+#: switch_capture_cli.py:509
+msgid "Lance une capture (bloquant, Ctrl+C pour arrêter)"
+msgstr ""
+
+#: switch_capture_cli.py:512
+msgid "Désinstalle la feature packet-capture sur le switch"
+msgstr ""
+
+#: switch_capture_cli.py:518
+msgid ""
+"Supprime aussi le .bin de la flash après désactivation (sinon il reste "
+"présent mais inactif)"
+msgstr ""
+
+#: switch_capture_cli.py:525
+msgid ""
+"Demande de retaper --switch-ip de façon interactive avant de poursuivre "
+"(garde-fou supplémentaire pour un lancement manuel en production). Ne pas "
+"utiliser en cron/systemd : la commande attendrait une entrée standard qui "
+"n'arrivera jamais."
+msgstr ""
+
+#: switch_capture_cli.py:534
+msgid ""
+"Copie un dépôt local de .bin (structure <modèle>/<version>/*.bin) vers --"
+"feature-bin-dir"
+msgstr ""
+
+#: switch_capture_cli.py:538
+msgid ""
+"Dossier source à importer, ex: ./feature-bin à côté de src/ (voir README-"
+"feature-bin.md)"
+msgstr ""
+
+#: switch_capture_cli.py:544
+msgid ""
+"Dossier cible (défaut : /etc/switch-capture/feature-bin s'il existe déjà, "
+"sinon ./feature-bin). Identique quelle que soit la méthode d'installation (."
+"deb, .rpm, install.sh)."
+msgstr ""
+
+#: switch_capture_cli.py:553
+msgid ""
+"Configure (ou retire) du port mirroring (SPAN local, ERSPAN/GRE distant, ou "
+"VLAN sonde + VXLAN L2) sur le switch, en mirroring de port entier ou filtré "
+"par ACL (--filter-mode)"
+msgstr ""
+
+#: switch_capture_cli.py:564
+msgid ""
+"'local' : SPAN, câble direct vers l'hôte de capture. 'gre' : ERSPAN tunnel-"
+"mode vers un collecteur distant. 'vxlan' : mirroring vers un VLAN sonde (--"
+"remote-probe-vlan), acheminé par extension L2 VXLAN plutôt que par un trunk "
+"physique — combinaison non officiellement documentée par H3C, imposée par "
+"retour d'expérience direct de l'utilisateur (voir features.md)"
+msgstr ""
+
+#: switch_capture_cli.py:574
+msgid "Interface source à mirrorer (répétable pour en mirrorer plusieurs)"
+msgstr ""
+
+#: switch_capture_cli.py:581
+msgid "(mode local) interface de destination connectée à l'hôte de capture"
+msgstr ""
+
+#: switch_capture_cli.py:586
+msgid ""
+"(mode gre ou vxlan) IP source du tunnel, déjà portée par une interface du "
+"switch"
+msgstr ""
+
+#: switch_capture_cli.py:589
+msgid "(mode gre) IP assignée à l'interface Tunnel elle-même"
+msgstr ""
+
+#: switch_capture_cli.py:593
+msgid "(mode gre ou vxlan) IP du collecteur distant"
+msgstr ""
+
+#: switch_capture_cli.py:597
+msgid ""
+"(mode gre, optionnel) interface pour le groupe service-loopback tunnel, si "
+"requis par la plateforme"
+msgstr ""
+
+#: switch_capture_cli.py:601
+msgid ""
+"(mode vxlan, obligatoire) VLAN sonde Comware (mirroring-group ... remote-"
+"probe vlan)"
+msgstr ""
+
+#: switch_capture_cli.py:605
+msgid ""
+"(mode vxlan, obligatoire) nom de la VSI Comware associée au VNI et au tunnel"
+msgstr ""
+
+#: switch_capture_cli.py:609
+msgid "(mode vxlan, obligatoire) VNI VXLAN associé à --vsi-name (0-16777215)"
+msgstr ""
+
+#: switch_capture_cli.py:614
+msgid ""
+"(mode vxlan, optionnel) identifiant du service-instance Comware raccordant --"
+"remote-probe-vlan à --vsi-name sur --reflector-interface — déduit de --group-"
+"id si omis"
+msgstr ""
+
+#: switch_capture_cli.py:622
+msgid ""
+"(mode vxlan, obligatoire) port physique dédié au reflector-port du mirroring-"
+"group et au raccordement VSI (service-instance)"
+msgstr ""
+
+#: switch_capture_cli.py:629
+msgid ""
+"'port' : mirroring-group historique, duplique tout le trafic du/des port(s) "
+"source. 'acl' : flow mirroring filtré par ACL avancée + politique QoS, ne "
+"duplique que les paquets correspondant à --acl-rule"
+msgstr ""
+
+#: switch_capture_cli.py:636
+msgid ""
+"(filter-mode acl) numéro d'ACL avancée Comware (3000-3999, 3998/3999 exclus)"
+msgstr ""
+
+#: switch_capture_cli.py:641
+msgid ""
+"(filter-mode acl, obligatoire) règle ACL avancée complète, ex. 'rule 0 "
+"permit ip source 10.0.0.5 0' (répétable pour en définir plusieurs)"
+msgstr ""
+
+#: switch_capture_cli.py:647
+msgid ""
+"(filter-mode acl, optionnel) nom du traffic classifier Comware — déduit de --"
+"group-id si omis"
+msgstr ""
+
+#: switch_capture_cli.py:651
+msgid ""
+"(filter-mode acl, optionnel) nom du traffic behavior Comware — déduit de --"
+"group-id si omis"
+msgstr ""
+
+#: switch_capture_cli.py:655
+msgid ""
+"(filter-mode acl, optionnel) nom de la qos policy Comware — déduit de --"
+"group-id si omis"
+msgstr ""
+
+#: switch_capture_cli.py:659
+msgid ""
+"Retire la configuration au lieu de la pousser (undo mirroring-group/policy "
+"ACL + tunnel éventuel)"
+msgstr ""
+
+#: switch_capture_cli.py:665
+msgid ""
+"Mode dry run : détecte modèle/version/features actives sur le switch sans "
+"rien modifier (utile avant une première intervention sans accès physique)"
+msgstr ""
+
+#: switch_capture_cli.py:682
+msgid ""
+"Mémorise le mot de passe SSH utilisé dans le trousseau système (voir "
+"'capture --help')."
+msgstr ""
+
+#: switch_capture_cli.py:693
+msgid ""
+"Repli si 'keyring' est absent (voir 'capture --help') : chemin d'un fichier "
+"KeePass .kdbx existant."
+msgstr ""
+
+#: switch_capture_cli.py:704
+msgid ""
+"Nom exact du .bin à rechercher dans 'display install active' (prioritaire "
+"sur --feature-bin-dir)"
+msgstr ""
+
+#: switch_capture_cli.py:709
+msgid ""
+"Racine du dépôt local de .bin, pour résoudre le nom attendu si --feature-bin-"
+"path est omis (def: ./feature-bin)"
+msgstr ""
+
+#: switch_capture_cli.py:715
+msgid ""
+"Service de transfert à vérifier ('scp server enable' vs 'sftp server "
+"enable'), défaut : scp"
+msgstr ""
+
+#: switch_capture_cli.py:721
+msgid ""
+"Analyse les écarts inter-trames d'un .pcap déjà rapatrié, pour choisir une "
+"valeur de --tap-pace-max-gap (voir features.md, section « Pas fait »)"
+msgstr ""
+
+#: switch_capture_cli.py:726
+msgid "Fichier .pcap classique (pas pcapng) déjà rapatrié à analyser"
+msgstr ""
+
+#: switch_capture_cli.py:734
+msgid ""
+"Valeur de --tap-pace-max-gap à évaluer sur ce fichier (répétable ; défaut : "
+"0.5, 1, 2, 5, 10 secondes)"
+msgstr ""
+
+#: switch_capture_gtk.py:256
+msgid "switch-capture — HPE Comware"
+msgstr ""
+
+#: switch_capture_gtk.py:394
+msgid "Préférences"
+msgstr ""
+
+#: switch_capture_gtk.py:407
+msgid "Slot IRF/châssis"
+msgstr ""
+
+#: switch_capture_gtk.py:414
+msgid "Modèle"
+msgstr ""
+
+#: switch_capture_gtk.py:423
+msgid "Forcer un .bin précis (optionnel)"
+msgstr ""
+
+#: switch_capture_gtk.py:435
+msgid "Fichier KeePass (.kdbx, repli)"
+msgstr ""
+
+#: switch_capture_gtk.py:479 switch_capture_gtk.py:1911
+msgid "Enregistrer"
+msgstr ""
+
+#: switch_capture_gtk.py:496 switch_capture_gtk.py:1924
+msgid "Échec de l'enregistrement"
+msgstr ""
+
+#: switch_capture_gtk.py:610
+msgid "mémoriser le mot de passe SSH"
+msgstr ""
+
+#: switch_capture_gtk.py:612
+msgid "Oublier le mot de passe mémorisé"
+msgstr ""
+
+#: switch_capture_gtk.py:632
+msgid "repli KeePass (.kdbx) : voir Préférences (menu ☰, en haut à gauche)"
+msgstr ""
+
+#: switch_capture_gtk.py:711
+msgid "Champs manquants"
+msgstr ""
+
+#: switch_capture_gtk.py:712
+msgid ""
+"Renseignez l'IP du switch et l'utilisateur SSH pour identifier le mot de "
+"passe à oublier."
+msgstr ""
+
+#: switch_capture_gtk.py:726
+msgid "Mot de passe mémorisé supprimé."
+msgstr ""
+
+#: switch_capture_gtk.py:728
+msgid "Aucun mot de passe mémorisé pour ce couple switch/utilisateur."
+msgstr ""
+
+#: switch_capture_gtk.py:731
+msgid "Mot de passe mémorisé"
+msgstr ""
+
+#: switch_capture_gtk.py:809
+msgid "Filtre de capture (tcpdump-like)"
+msgstr ""
+
+#: switch_capture_gtk.py:810
+msgid "ex: host 10.0.0.5 and tcp port 22"
+msgstr ""
+
+#: switch_capture_gtk.py:831
+msgid "Importer un dépôt .bin..."
+msgstr ""
+
+#: switch_capture_gtk.py:835
+msgid "copie <source>/<modèle>/<version>/*.bin vers le dossier ci-dessus"
+msgstr ""
+
+#: switch_capture_gtk.py:846
+msgid "Choisir"
+msgstr ""
+
+#: switch_capture_gtk.py:863
+msgid "Choisir le dossier .bin à importer"
+msgstr ""
+
+#: switch_capture_gtk.py:887
+msgid "(défaut)"
+msgstr ""
+
+#: switch_capture_gtk.py:890
+msgid "Import terminé"
+msgstr ""
+
+#: switch_capture_gtk.py:894 switch_capture_gtk.py:897
+#: switch_capture_gtk.py:1965
+msgid "Échec de l'import"
+msgstr ""
+
+#: switch_capture_gtk.py:894
+msgid "Voir le journal pour le détail."
+msgstr ""
+
+#: switch_capture_gtk.py:929
+msgid ""
+"pour modifier une capture : supprimez-la puis recréez-la avec le formulaire "
+"ci-dessous"
+msgstr ""
+
+#: switch_capture_gtk.py:977
+msgid ""
+"slot IRF/châssis, modèle et .bin forcé : voir Préférences (menu ☰, en haut à "
+"gauche)"
+msgstr ""
+
+#: switch_capture_gtk.py:992
+msgid ""
+"nécessaire pour comparer des traces prises à plusieurs points (client/"
+"routeur/serveur)"
+msgstr ""
+
+#: switch_capture_gtk.py:1047
+msgid "Tester la connexion"
+msgstr ""
+
+#: switch_capture_gtk.py:1050
+msgid "+ Ajouter cette capture à la liste"
+msgstr ""
+
+#: switch_capture_gtk.py:1054 switch_capture_gtk.py:1907
+msgid "Enregistrer comme modèle"
+msgstr ""
+
+#: switch_capture_gtk.py:1057
+msgid "Importer un modèle..."
+msgstr ""
+
+#: switch_capture_gtk.py:1186
+msgid "Pousser la configuration de mirroring"
+msgstr ""
+
+#: switch_capture_gtk.py:1190
+msgid "Retirer le mirroring"
+msgstr ""
+
+#: switch_capture_gtk.py:1301 switch_capture_gtk.py:1331
+msgid "Configuration incomplète"
+msgstr ""
+
+#: switch_capture_gtk.py:1320
+msgid "Connexion réussie"
+msgstr ""
+
+#: switch_capture_gtk.py:1323
+msgid "Échec de la connexion"
+msgstr ""
+
+#: switch_capture_gtk.py:1435
+msgid "Configuration de mirroring incomplète"
+msgstr ""
+
+#: switch_capture_gtk.py:1440
+msgid "Mirroring retiré"
+msgstr ""
+
+#: switch_capture_gtk.py:1440
+msgid "Mirroring configuré"
+msgstr ""
+
+#: switch_capture_gtk.py:1442
+msgid "Échec du retrait du mirroring"
+msgstr ""
+
+#: switch_capture_gtk.py:1442
+msgid "Échec de la configuration du mirroring"
+msgstr ""
+
+#: switch_capture_gtk.py:1475
+msgid "Échec de la mémorisation"
+msgstr ""
+
+#: switch_capture_gtk.py:1484
+msgid "Mémorisation impossible"
+msgstr ""
+
+#: switch_capture_gtk.py:1486
+msgid ""
+"Ni le trousseau système ni le repli KeePass ne sont utilisables : installez "
+"le module 'keyring', ou renseignez le fichier KeePass dans Préférences (menu "
+"☰) et la variable d'environnement SWITCH_CAPTURE_KEEPASS_PASSWORD avant "
+"d'ajouter cette capture."
+msgstr ""
+
+#: switch_capture_gtk.py:1500
+msgid "Échec de la mémorisation (KeePass)"
+msgstr ""
+
+#: switch_capture_gtk.py:1606
+msgid "Aucune capture ajoutée pour l'instant."
+msgstr ""
+
+#: switch_capture_gtk.py:1613
+msgid "Inspecter (dry run)"
+msgstr ""
+
+#: switch_capture_gtk.py:1616
+msgid "Désinstaller la feature"
+msgstr ""
+
+#: switch_capture_gtk.py:1620
+msgid "Modifier"
+msgstr ""
+
+#: switch_capture_gtk.py:1624
+msgid "Supprimer"
+msgstr ""
+
+#: switch_capture_gtk.py:1654
+#, python-brace-format
+msgid "Inspection de {ip}"
+msgstr ""
+
+#: switch_capture_gtk.py:1658
+msgid "Échec de l'inspection"
+msgstr ""
+
+#: switch_capture_gtk.py:1676 switch_capture_gtk.py:1910
+#: switch_capture_gtk.py:1950
+msgid "Annuler"
+msgstr ""
+
+#: switch_capture_gtk.py:1677
+msgid "supprimer aussi le .bin de la flash"
+msgstr ""
+
+#: switch_capture_gtk.py:1681
+msgid "Désinstaller"
+msgstr ""
+
+#: switch_capture_gtk.py:1699
+msgid "Désinstallation terminée"
+msgstr ""
+
+#: switch_capture_gtk.py:1699
+msgid "Échec de la désinstallation"
+msgstr ""
+
+#: switch_capture_gtk.py:1908
+msgid "Nom du modèle (le mot de passe SSH n'est jamais enregistré) :"
+msgstr ""
+
+#: switch_capture_gtk.py:1912
+msgid "ex: labo-5130-client"
+msgstr ""
+
+#: switch_capture_gtk.py:1935
+msgid "Aucun modèle"
+msgstr ""
+
+#: switch_capture_gtk.py:1936
+#, python-brace-format
+msgid ""
+"Aucun modèle trouvé dans {dir}/. Utilisez d'abord « Enregistrer comme modèle "
+"»."
+msgstr ""
+
+#: switch_capture_gtk.py:1947
+msgid "Importer un modèle"
+msgstr ""
+
+#: switch_capture_gtk.py:1948
+msgid ""
+"Le mot de passe SSH n'est jamais enregistré : ressaisissez-le après l'import."
+msgstr ""
+
+#: switch_capture_gtk.py:1951
+msgid "Importer"
+msgstr ""
+
+#: switch_capture_gtk.py:1987
+msgid ""
+"Prépare toutes les captures de la liste (modèle, SCP/sshfs, NTP, feature). "
+"Aucune capture ne peut démarrer tant que cette étape n'est pas terminée pour "
+"toutes."
+msgstr ""
+
+#: switch_capture_gtk.py:1996
+msgid "Lancer l'installation de toutes les captures"
+msgstr ""
+
+#: switch_capture_gtk.py:2022
+msgid "Aucune capture à installer."
+msgstr ""
+
+#: switch_capture_gtk.py:2053
+msgid "Installation impossible"
+msgstr ""
+
+#: switch_capture_gtk.py:2055
+#, python-brace-format
+msgid ""
+"Une capture est déjà en cours ({count}). Arrêtez-la (page « Journal ») avant "
+"de lancer une nouvelle installation."
+msgstr ""
+
+#: switch_capture_gtk.py:2063
+msgid "Rien à installer"
+msgstr ""
+
+#: switch_capture_gtk.py:2063
+msgid "Toutes les captures sont déjà prêtes (ou la liste est vide)."
+msgstr ""
+
+#: switch_capture_gtk.py:2098
+msgid ""
+"Disponible une fois toutes les captures installées avec succès (page "
+"Installation)."
+msgstr ""
+
+#: switch_capture_gtk.py:2104
+msgid "Démarrer toutes les captures"
+msgstr ""
+
+#: switch_capture_gtk.py:2124
+msgid "Aucune capture."
+msgstr ""
+
+#: switch_capture_gtk.py:2133 switch_capture_gtk.py:2245
+msgid "en cours"
+msgstr ""
+
+#: switch_capture_gtk.py:2175
+msgid "Aucune capture en cours."
+msgstr ""
+
+#: switch_capture_gtk.py:2177
+msgid "Arrêter toutes les captures"
+msgstr ""
+
+#: switch_capture_gtk.py:2192
+msgid "<b>Logs</b>"
+msgstr ""
+
+#: switch_capture_gtk.py:2238
+msgid "streaming réseau direct (rpcap)"
+msgstr ""
+
+#: switch_capture_gtk.py:2245
+msgid "arrêtée"
+msgstr ""
+
+#: switch_capture_gtk.py:2271
+msgid "Aucune capture terminée pour l'instant."
+msgstr ""
+
+#: switch_capture_gtk.py:2274
+msgid "Rafraîchir"
+msgstr ""

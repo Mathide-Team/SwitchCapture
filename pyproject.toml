@@ -1,0 +1,113 @@
+# Configuration des outils de qualité ET, depuis la session 63, gestion des
+# dépendances via uv — mais toujours PAS un packaging pip/PyPI du projet.
+#
+# Ce dépôt reste délibérément non installable via pip : `src/` est copié tel
+# quel par les 3 méthodes d'installation (install.sh, packaging/build_deb.sh,
+# packaging-rpm/build_rpm.sh), voir CLAUDE.md et tests/conftest.py. Ce fichier
+# ne contient donc volontairement aucun [build-system] : c'est la présence de
+# cette section — pas celle de [project] — qui détermine si `uv` tente de
+# construire/installer le projet lui-même (doc uv, « Configuring projects » →
+# « Build systems » : « If a build system is not defined, uv will not attempt
+# to build or install the project itself, just its dependencies »,
+# https://docs.astral.sh/uv/concepts/projects/config/#build-systems, vérifié
+# en session 63). `[tool.uv] package = false` ci-dessous le confirme de façon
+# explicite, pour ne pas dépendre silencieusement de ce seul comportement par
+# défaut si un [build-system] était ajouté par erreur un jour (ex. copié
+# depuis un autre projet).
+#
+# [project] EST en revanche présent depuis la session 63 : c'est le prix pour
+# que `uv` verrouille les dépendances (`uv.lock`, `uv add`/`uv sync`), qui
+# remplacent `requirements.txt`/`requirements-dev.txt` (supprimés) — ces deux
+# fichiers n'étaient de toute façon utilisés que pour le développement :
+# `install.sh` n'a jamais lu `requirements.txt`, il liste ses propres
+# dépendances en dur dans son appel `pip install` (voir plus bas et
+# docs/sessions/session-63.md pour la raison de cette non-fusion).
+#
+# Candidat #5 de l'audit Context7 (session 56), sections [tool.*] réalisées en
+# session 60 — voir docs/features-backlog.md et docs/sessions/session-60.md.
+
+[project]
+name = "switch-capture"
+# Reprise telle quelle de packaging/debian/DEBIAN/control (Version:) et
+# packaging-rpm/switch-capture.spec (Version:) — 3 fichiers, aucun des trois
+# n'est généré depuis un autre : à mettre à jour ensemble en cas de bump.
+version = "1.0.0"
+description = "Orchestrateur de capture réseau pour switches HPE Comware (5130/5140/5510/5520), avec CLI et interface graphique GTK4."
+readme = "README.md"
+# Plancher réel documenté, pas une estimation : repli sur python3.9 pour el8
+# (Rocky/RHEL/CentOS Stream 8) quand python3.11 est indisponible — voir
+# install.sh et packaging-rpm/switch-capture.spec. Aucun plafond connu.
+requires-python = ">=3.9"
+dependencies = [
+    "netmiko>=4.3",
+    "loguru>=0.7",
+    "PyYAML>=6.0",
+    "paramiko>=2.7",
+    "scp>=0.14",
+]
+
+# PyGObject (module "gi", GTK4) n'est délibérément PAS listé ci-dessus : pas
+# installable proprement via pip sur la plupart des distros, installer le
+# paquet système à la place.
+#   Debian/Ubuntu : sudo apt install python3-gi gir1.2-gtk-4.0
+#   Fedora        : sudo dnf install python3-gobject gtk4
+# `uv sync` crée un venv isolé (pas de --system-site-packages) : GTK4 y reste
+# invisible tant que ces paquets système ne sont pas installés ET que le venv
+# n'est pas recréé pour les voir — voir « Commandes de qualité » (CLAUDE.md)
+# pour la marche à suivre. Les 10 tests GUI continuent de passer en skip
+# propre dans ce cas (tests/conftest.py::require_gtk4), sans changement de
+# comportement lié à cette migration.
+#
+# iproute2/iproute (commande "ip") n'est pas un paquet Python : requis
+# uniquement pour --output-mode tap, installer via le gestionnaire système.
+
+[tool.uv]
+# Non-installation explicite du projet lui-même dans son propre venv — voir
+# l'explication complète en tête de fichier.
+package = false
+
+[dependency-groups]
+dev = [
+    "pytest>=7.0",
+    # Dépendance OPTIONNELLE en usage normal (voir commentaire GTK4/keyring
+    # ci-dessus) : listée ici uniquement pour que tests/test_keyring_password.py
+    # puisse importer keyring/keyring.errors et brancher un faux backend en
+    # mémoire — aucun trousseau système réel requis pour la suite pytest.
+    "keyring>=24",
+    # Même statut, même raison : tests/test_keepass_password.py branche un
+    # faux backend en mémoire, aucun vrai fichier .kdbx chiffré requis.
+    "pykeepass>=4.0",
+]
+
+# Groupe volontairement à part : NON synchronisé par défaut par `uv sync`/
+# `uv run` (seul `dev` ci-dessus l'est — comportement `uv` documenté, pas une
+# option choisie ici). Reprend la distinction déjà en place avant la session
+# 63 (`pip install ruff` / `pip install coverage` hors requirements-dev.txt,
+# « optionnel — audit ponctuel seulement ») plutôt que de synchroniser ruff/
+# coverage à chaque `pytest`, qui ne les utilise pas. Invocation :
+# `uv run --group quality ruff check .` / `... coverage run -m pytest -q`
+# (voir « Commandes de qualité » dans CLAUDE.md).
+quality = [
+    "ruff>=0.16.7",
+    "coverage>=7.10.7",
+]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.format]
+# Les versions récentes de `ruff` reformatent aussi les blocs ```python
+# embarqués dans les fichiers Markdown. `docs/sessions/*.md` est un journal
+# archivé : ces blocs reproduisent des commandes réellement exécutées lors
+# d'une session passée, ils ne doivent pas être réécrits après coup
+# (convention « ne pas réécrire l'historique », CLAUDE.md). Exclusion
+# limitée au *formateur* : elle ne retire rien à `ruff check`, qui ne lit
+# de toute façon que les fichiers `.py` (vérifié : « No Python files found
+# under the given path(s) » sur un `.md`). Voir docs/sessions/session-61.md.
+exclude = ["docs/**/*.md"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["src"]

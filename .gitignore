@@ -1,0 +1,15 @@
+# Environnement uv (session 63) — recréé par `uv sync`, ne doit jamais être
+# committé (contient des chemins absolus au conteneur/à la machine locale).
+.venv/
+
+# Caches Python/outils courants.
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.coverage
+
+# switch_capture.log et ses variantes horodatées : générés à l'exécution
+# (CLI/tests), retrouvés par erreur dans plusieurs livraisons avant ce
+# fichier (voir docs/sessions/session-62.md) — jamais du contenu à livrer.
+switch_capture*.log

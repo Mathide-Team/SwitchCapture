@@ -1,0 +1,36 @@
+Package: switch-capture
+Version: 1.0.0
+Section: net
+Priority: optional
+Architecture: __BUILD_ARCH__
+Maintainer: Mathilde Deuscher <mathilde.deuscher@example.com>
+Depends: python3 (>= 3.10), python3-pip, python3-yaml, python3-netmiko, python3-loguru, python3-paramiko, python3-scp, wireshark, iproute2
+Recommends: openssh-client, sshfs, python3-gi, gir1.2-gtk-4.0, libcap2-bin
+Installed-Size: 200
+Description: Orchestrateur de capture packet-capture pour switches HPE Comware
+ Automatise, sur un switch HPE Comware 7 (5130/5140/5510/5520), la mise en
+ place et le suivi d'une capture packet-capture : activation SCP (transfert
+ fiable, sans montage FUSE — sshfs reste disponible en repli), installation
+ de la feature si nécessaire (5130/5140/5510/5520 — tous requièrent la
+ feature, aucun n'est natif à l'image), vérification/configuration NTP
+ (timestamps comparables entre traces), lancement de la capture avec
+ rotation de fichiers et filtre optionnel, rapatriement et réinjection en
+ direct — soit dans Wireshark via un named pipe (une capture à la fois),
+ soit dans une interface réseau virtuelle TAP dédiée (plusieurs captures
+ simultanées observables ensemble, ex: même trafic vu au client/routeur/
+ serveur ; switch-capture-taphelper, avec cap_net_admin+ep, évite d'avoir à
+ lancer switch-capture lui-même en root pour ce mode — voir libcap2-bin).
+ .
+ Alternative à packet-capture : configuration de port mirroring (SPAN local
+ ou ERSPAN/GRE distant) directement poussée sur le switch, pour de la
+ capture à débit ligne sans les limites CPU de packet-capture. Voir
+ /usr/share/doc/switch-capture/CAPTURE-METHODS.md pour la comparaison
+ complète (packet-capture / mirroring+GRE / rpcap) et les procédures
+ manuelles multi-constructeurs (HPE Comware, Cisco, autres).
+ .
+ Deux interfaces, un seul exécutable (/usr/bin/switch-capture) : CLI
+ (arguments/YAML, adaptée aux automatismes) et GTK4 (formulaire), avec
+ bascule automatique — CLI directe si les paramètres fournis suffisent,
+ GUI sinon si disponible. -c force la CLI, -g force la GUI. GTK4/PyGObject
+ sont une dépendance recommandée (pas stricte) : sans eux, seule la CLI
+ fonctionne. Voir /usr/share/doc/switch-capture/USAGE.md.

@@ -1,0 +1,182 @@
+#!/usr/bin/env python3
+"""switch-capture — point d'entrée unique (CLI + GTK4).
+
+Ce fichier EST /usr/bin/switch-capture : install.sh, build_deb.sh et le
+spec RPM le copient tel quel (avec juste la ligne shebang réécrite pour
+pointer vers l'interpréteur retenu, ex: python3.11 sur el8) plutôt que de
+regénérer un wrapper à chaque méthode d'installation. Pas de fichier
+switch_capture_launcher.py séparé : c'est ce module-ci.
+
+Comportement :
+    - `-c` / `--cli` force le mode CLI (switch_capture_cli), quels que
+      soient les autres arguments.
+    - `-g` / `--gtk` force le mode GTK4 (switch_capture_gtk). Erreur claire
+      si PyGObject/GTK4 ne sont pas installés (ce qui peut arriver : la
+      GUI est une dépendance optionnelle, voir INSTALL.md).
+    - Sans l'un de ces deux flags (mode automatique) :
+        * si les arguments restants (et/ou le YAML qu'ils référencent via
+          --config, et/ou SWITCH_SSH_PASSWORD) suffisent à construire une
+          Config CLI complète pour une sous-commande valide (`capture` ou
+          `uninstall`), le script s'exécute en CLI, sans jamais ouvrir de
+          fenêtre ;
+        * sinon, si aucun argument n'a été fourni et que GTK4 est
+          disponible, la fenêtre s'ouvre ;
+        * dans tous les autres cas (arguments partiels/invalides, ou GTK4
+          absent), la CLI est invoquée telle quelle : elle affiche alors
+          l'erreur la plus utile (champ manquant, sous-commande requise,
+          etc.) plutôt que d'ouvrir silencieusement une fenêtre ou
+          d'échouer sans explication.
+"""
+
+from __future__ import annotations
+
+import os
+import sys
+
+# Doit rester avant tout import de gi/Gtk/Gio, y compris celui fait par
+# `_gtk_available()` ci-dessous pour la simple détection de disponibilité :
+# évite que GIO ne résolve ses moniteurs de volumes/VFS distants (paquet
+# gvfs) dès l'import de Gtk. Même raison d'être et même effet que le
+# réglage identique en tête de switch_capture_gtk.py (voir son commentaire
+# pour le détail — bugs GVFS/GOA de features.md) ; dupliqué ici plutôt que
+# facteur commun avec switch_capture_gtk.py car ce fichier-ci doit rester
+# autonome (voir docstring de module : copié tel quel par les 3 méthodes
+# d'installation, sans dépendre d'un import préalable des modules sœurs).
+os.environ.setdefault("GIO_USE_VFS", "local")
+os.environ.setdefault("GIO_USE_VOLUME_MONITOR", "unix")
+
+# Rend les modules sœurs (switch_capture_core/cli/gtk) importables quel que
+# soit le mode d'exécution :
+#   - installé : ce fichier vit en /usr/bin, les modules en
+#     /usr/lib/switch-capture -> ajouté explicitement ci-dessous.
+#   - dev, lancé depuis src/ (`python3 src/switch-capture`) : Python ajoute
+#     déjà automatiquement le dossier du script à sys.path, donc les
+#     imports fonctionnent sans rien de plus ; l'insertion ci-dessous est
+#     alors simplement sans effet (dossier absent ou déjà présent).
+sys.path.insert(0, "/usr/lib/switch-capture")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+_CLI_FLAGS = ("-c", "--cli")
+_GTK_FLAGS = ("-g", "--gtk")
+
+
+def _gtk_available() -> bool:
+    """Indique si PyGObject + le typelib GTK4 sont utilisables ici.
+
+    Returns:
+        True si `import gi; gi.require_version("Gtk", "4.0")` et l'import
+        de `Gtk` réussissent dans l'interpréteur courant.
+    """
+    try:
+        import gi
+
+        gi.require_version("Gtk", "4.0")
+        from gi.repository import Gtk  # noqa: F401
+    except Exception:
+        return False
+    return True
+
+
+def _try_build_cli_config(remaining: list[str]):
+    """Tente de construire une invocation CLI complète à partir de `remaining`.
+
+    Args:
+        remaining: arguments restants (après retrait de -c/-g).
+
+    Returns:
+        Un objet non-None si les arguments (et/ou le YAML référencé par
+        --config, et/ou SWITCH_SSH_PASSWORD) suffisent à satisfaire une
+        sous-commande valide, sinon None. `import-bin` et `mirror` n'ont pas
+        besoin de Config (pas de switch à capturer) : leur seule validité
+        syntaxique (arguments requis fournis) suffit.
+    """
+    from switch_capture_cli import build_arg_parser, build_config
+
+    parser = build_arg_parser()
+    try:
+        ns = parser.parse_args(remaining)
+    except SystemExit:
+        return None
+
+    if getattr(ns, "action", None) in ("import-bin", "mirror"):
+        return ns, None
+
+    try:
+        cfg = build_config(ns)
+    except ValueError:
+        return None
+    return ns, cfg
+
+
+def run_cli(remaining: list[str]) -> int:
+    """Délègue à switch_capture_cli.main() avec `remaining` comme argv.
+
+    Args:
+        remaining: arguments à transmettre à la CLI.
+
+    Returns:
+        Code de sortie du processus.
+    """
+    from switch_capture_cli import main as cli_main
+
+    return cli_main(remaining)
+
+
+def run_gtk() -> int:
+    """Lance l'app GTK4, avec un message clair si les prérequis manquent.
+
+    Returns:
+        Code de sortie du processus (1 si GTK4/PyGObject indisponibles).
+    """
+    if not _gtk_available():
+        sys.stderr.write(
+            "GTK4/PyGObject non installés — installez python3-gi + "
+            "gir1.2-gtk-4.0 (Debian/Ubuntu) ou python3-gobject + gtk4 "
+            "(Rocky/RHEL/CentOS, non disponible sur el8, voir INSTALL.md), "
+            "ou relancez avec -c pour utiliser la CLI.\n"
+        )
+        return 1
+    from switch_capture_gtk import main as gtk_main
+
+    return gtk_main()
+
+
+def main() -> int:
+    """Arbitre entre CLI forcée (-c), GTK forcé (-g), ou bascule automatique.
+
+    Returns:
+        Code de sortie du processus.
+    """
+    argv = sys.argv[1:]
+    mode = None
+    remaining: list[str] = []
+    for arg in argv:
+        if arg in _CLI_FLAGS:
+            mode = "cli"
+        elif arg in _GTK_FLAGS:
+            mode = "gtk"
+        else:
+            remaining.append(arg)
+
+    if mode == "cli":
+        return run_cli(remaining)
+    if mode == "gtk":
+        return run_gtk()
+
+    # Mode automatique : arguments/YAML suffisants -> CLI directe, sans
+    # jamais ouvrir de fenêtre.
+    if remaining and _try_build_cli_config(remaining) is not None:
+        return run_cli(remaining)
+
+    # Rien fourni du tout -> GUI si disponible.
+    if not remaining and _gtk_available():
+        return run_gtk()
+
+    # Soit rien n'a été fourni et GTK4 est indisponible, soit des
+    # arguments partiels/invalides ont été fournis : dans les deux cas,
+    # la CLI donne le message d'erreur le plus utile.
+    return run_cli(remaining)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

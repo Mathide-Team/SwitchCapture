@@ -1,0 +1,1017 @@
+--- switch_capture_core.orig.py	2026-08-25 09:57:30.021268640 +0200
++++ switch_capture_core.py	2026-08-25 10:14:17.997745580 +0200
+@@ -62,33 +62,47 @@
+ #                   de la feature, comme 5130/5140 — ne pas supposer natif)
+ # "unsupported"  -> pas de mécanisme équivalent (Comware 5, ex: 3600 V2)
+ MODEL_PROFILES: dict[str, dict] = {
+-    "5130": {
+-        "aliases": ("5130", "5130-28", "5130-52", "5130EI"),
++    "MSR4000": {
++        "aliases": ("MSR4000 ", "MSR 4000 "),
++        "comware": 7,
++        "packet_capture": "builtin",
++        "notes": "Feature packet-capture préinstallée'.",
++    },
++    "5130EI": {
++        "aliases": ("5130ei", "5130EI"),
+         "comware": 7,
+         "packet_capture": "installable",
+         "notes": "Feature packet-capture installable via 'install activate feature'.",
+     },
+-    "5140": {
+-        "aliases": ("5140", "5140-28", "5140-52", "5140EI"),
++    "5130HI": {
++        "aliases": ("5130hi", "5130HI"),
++        "comware": 7,
++        "packet_capture": "installable",
++        "notes": "Feature packet-capture installable via 'install activate feature'.",
++    },
++    "5140EI": {
++        "aliases": ("5140ei", "5140EI"),
++        "comware": 7,
++        "packet_capture": "installable",
++        "notes": "Feature packet-capture installable via 'install activate feature'",
++    },
++    "5140HI": {
++        "aliases": ("5140hi", "5140HI"),
+         "comware": 7,
+         "packet_capture": "installable",
+-        "notes": "Même mécanisme que le 5130, package spécifique à la version logicielle.",
++        "notes": "Feature packet-capture installable via 'install activate feature'",
+     },
+     "5510": {
+-        "aliases": ("5510", "S5510"),
++        "aliases": ("5510hi", "5510HI"),
+         "comware": 7,
+         "packet_capture": "installable",
+-        "notes": (
+-            "Feature packet-capture installable via 'install activate feature', "
+-            "comme le 5130/5140 — PAS natif à l'image principale, contrairement à "
+-            "ce qui était supposé dans une version antérieure de ce fichier."
+-        ),
++        "notes": "Feature packet-capture installable via 'install activate feature'",
+     },
+     "5520": {
+-        "aliases": ("5520", "S5520"),
++        "aliases": ("5520hi", "5520HI"),
+         "comware": 7,
+         "packet_capture": "installable",
+-        "notes": "Même mécanisme que le 5510 : feature à installer, package spécifique à la version logicielle.",
++        "notes": "Feature packet-capture installable via 'install activate feature'",
+     },
+     "3600v2": {
+         "aliases": ("3600", "3600 V2", "3600-V2", "A3600"),
+@@ -113,10 +127,14 @@
+         La clé de MODEL_PROFILES correspondante, ou None si non reconnue.
+     """
+     text = version_output.upper()
++    logger.debug(text)
+     for key, profile in MODEL_PROFILES.items():
+         for alias in profile["aliases"]:
++            logger.debug(f"key {key} - Alias {alias.upper()}")
+             if alias.upper() in text:
++                logger.debug(f"Modèle {key}")
+                 return key
++    logger.debug("Modèle non trouvé")
+     return None
+ 
+ 
+@@ -155,7 +173,9 @@
+     return bool(match) and match.group(1).lower() == "synchronized"
+ 
+ 
+-def resolve_feature_bin(feature_bin_dir: str, model: str, version: str | None) -> Path | None:
++def resolve_feature_bin(
++    feature_bin_dir: str, model: str, version: str | None
++) -> Path | None:
+     """Cherche le .bin de la feature packet-capture pour un modèle/version donnés.
+ 
+     Structure attendue du dépôt local :
+@@ -171,18 +191,22 @@
+     Returns:
+         Le chemin du premier .bin trouvé, ou None si rien ne correspond.
+     """
++    logger.debug(
++        f"feature_bin_dir '{feature_bin_dir}' - model '{model}' - version '{version}' "
++    )
+     root = Path(feature_bin_dir) / model
+     if not root.is_dir():
+         return None
+ 
+     if version:
+         versioned = root / version
++        logger.debug(f"versioned '{versioned}'  ")
+         if versioned.is_dir():
+-            matches = sorted(versioned.glob("packet-capture*.bin"))
++            matches = sorted(versioned.glob("*packet-capture*.bin"))
+             if matches:
+                 return matches[0]
+ 
+-    matches = sorted(root.glob("packet-capture*.bin"))
++    matches = sorted(root.glob("*packet-capture*.bin"))
+     return matches[0] if matches else None
+ 
+ 
+@@ -225,15 +249,23 @@
+         RuntimeError: si la création/activation échoue (droits insuffisants,
+             `ip` absent, nom déjà pris par une interface d'un autre type...).
+     """
+-    exists = subprocess.run(
+-        ["ip", "link", "show", name], capture_output=True, text=True
+-    ).returncode == 0
++    exists = (
++        subprocess.run(
++            ["ip", "link", "show", name],
++            capture_output=True,
++            text=True,
++            check=False,
++        ).returncode
++        == 0
++    )
+ 
+     if not exists:
+         logger.info("ensure_tap_interface | création de {name}", name=name)
+         result = subprocess.run(
+             ["ip", "tuntap", "add", "dev", name, "mode", "tap"],
+-            capture_output=True, text=True,
++            capture_output=True,
++            text=True,
++            check=False,
+         )
+         if result.returncode != 0:
+             raise RuntimeError(
+@@ -241,11 +273,17 @@
+                 "(droits root/CAP_NET_ADMIN requis, voir INSTALL.md)"
+             )
+     else:
+-        logger.info("ensure_tap_interface | {name} existe déjà, réutilisation", name=name)
++        logger.info(
++            "ensure_tap_interface | {name} existe déjà, réutilisation", name=name
++        )
+ 
+-    result = subprocess.run(["ip", "link", "set", name, "up"], capture_output=True, text=True)
++    result = subprocess.run(
++        ["ip", "link", "set", name, "up"], capture_output=True, text=True, check=False
++    )
+     if result.returncode != 0:
+-        raise RuntimeError(f"Impossible d'activer l'interface TAP {name!r} : {result.stderr.strip()}")
++        raise RuntimeError(
++            f"Impossible d'activer l'interface TAP {name!r} : {result.stderr.strip()}"
++        )
+ 
+ 
+ def delete_tap_interface(name: str) -> None:
+@@ -257,9 +295,18 @@
+     Args:
+         name: nom de l'interface TAP à supprimer.
+     """
+-    result = subprocess.run(["ip", "link", "delete", name], capture_output=True, text=True)
++    result = subprocess.run(
++        ["ip", "link", "delete", name],
++        capture_output=True,
++        text=True,
++        check=False,
++    )
+     if result.returncode != 0:
+-        logger.warning("delete_tap_interface | {name} : {err}", name=name, err=result.stderr.strip())
++        logger.warning(
++            "delete_tap_interface | {name} : {err}",
++            name=name,
++            err=result.stderr.strip(),
++        )
+     else:
+         logger.info("delete_tap_interface | {name} supprimée", name=name)
+ 
+@@ -327,13 +374,17 @@
+             raise ValueError(f"{pcap_file} trop petit / pcap invalide")
+         magic = struct.unpack("<I", header[:4])[0]
+         if magic not in PCAP_MAGICS:
+-            raise ValueError(f"{pcap_file} : magic pcap inattendu ({magic:#x}), probablement pcapng")
++            raise ValueError(
++                f"{pcap_file} : magic pcap inattendu ({magic:#x}), probablement pcapng"
++            )
+ 
+         while True:
+             record_header = f.read(PCAP_RECORD_HEADER_LEN)
+             if len(record_header) < PCAP_RECORD_HEADER_LEN:
+                 break
+-            _ts_sec, _ts_usec, incl_len, _orig_len = struct.unpack("<IIII", record_header)
++            _ts_sec, _ts_usec, incl_len, _orig_len = struct.unpack(
++                "<IIII", record_header
++            )
+             frame = f.read(incl_len)
+             if len(frame) < incl_len:
+                 break
+@@ -417,6 +468,7 @@
+     rotation_seconds: int = 20
+     max_ring_files: int = 10
+     capture_filter: str = ""
++    packet_capture_cmd: str = "packet-capture"
+     spool_dir: str = "./spool"
+     archive_dir: str | None = None
+     fifo_path: str = "./capture_live.fifo"
+@@ -456,13 +508,19 @@
+                 "Mot de passe SSH manquant (champ 'ssh_password' ou variable SWITCH_SSH_PASSWORD)"
+             )
+         if self.model and self.model not in MODEL_PROFILES:
+-            raise ValueError(f"Modèle invalide : {self.model!r} (choix : {', '.join(sorted(MODEL_PROFILES))})")
++            raise ValueError(
++                f"Modèle invalide : {self.model!r} (choix : {', '.join(sorted(MODEL_PROFILES))})"
++            )
+         if self.output_mode not in ("fifo", "tap", "rpcap"):
+-            raise ValueError(f"output_mode invalide : {self.output_mode!r} (choix : fifo, tap, rpcap)")
++            raise ValueError(
++                f"output_mode invalide : {self.output_mode!r} (choix : fifo, tap, rpcap)"
++            )
+         if self.output_mode == "tap" and not self.tap_interface:
+             raise ValueError("tap_interface requis quand output_mode == 'tap'")
+         if self.transfer_mode not in ("scp", "sshfs"):
+-            raise ValueError(f"transfer_mode invalide : {self.transfer_mode!r} (choix : scp, sshfs)")
++            raise ValueError(
++                f"transfer_mode invalide : {self.transfer_mode!r} (choix : scp, sshfs)"
++            )
+ 
+     def resolve_default_mount_point(self) -> None:
+         """Fixe mount_point à './<switch_ip>' si l'utilisateur a laissé le défaut vide."""
+@@ -647,7 +705,8 @@
+         "started_at_epoch": state.started_at,
+         "started_at_iso": (
+             time.strftime("%Y-%m-%dT%H:%M:%S%z", time.localtime(state.started_at))
+-            if state.started_at else None
++            if state.started_at
++            else None
+         ),
+         "ntp_synced": state.ntp_synced,
+         "ntp_detail": state.ntp_detail,
+@@ -655,7 +714,9 @@
+         "tap_interface": cfg.tap_interface,
+     }
+     meta_path = target_dir / "capture-meta.json"
+-    meta_path.write_text(json.dumps(metadata, indent=2, ensure_ascii=False), encoding="utf-8")
++    meta_path.write_text(
++        json.dumps(metadata, indent=2, ensure_ascii=False), encoding="utf-8"
++    )
+     logger.info("write_capture_metadata | écrit={path}", path=meta_path)
+ 
+ 
+@@ -728,15 +789,25 @@
+         """Normalise et valide les champs obligatoires (mêmes règles que Config, sans capture_interface)."""
+         if not self.ssh_password:
+             self.ssh_password = os.environ.get("SWITCH_SSH_PASSWORD", "")
+-        missing = [n for n, v in (("switch_ip", self.switch_ip), ("ssh_user", self.ssh_user)) if not v]
++        missing = [
++            n
++            for n, v in (("switch_ip", self.switch_ip), ("ssh_user", self.ssh_user))
++            if not v
++        ]
+         if missing:
+             raise ValueError(f"Champs obligatoires manquants : {', '.join(missing)}")
+         if not self.ssh_password:
+-            raise ValueError("Mot de passe SSH manquant (champ 'ssh_password' ou SWITCH_SSH_PASSWORD)")
++            raise ValueError(
++                "Mot de passe SSH manquant (champ 'ssh_password' ou SWITCH_SSH_PASSWORD)"
++            )
+         if self.model and self.model not in MODEL_PROFILES:
+-            raise ValueError(f"Modèle invalide : {self.model!r} (choix : {', '.join(sorted(MODEL_PROFILES))})")
++            raise ValueError(
++                f"Modèle invalide : {self.model!r} (choix : {', '.join(sorted(MODEL_PROFILES))})"
++            )
+         if self.transfer_mode not in ("scp", "sshfs"):
+-            raise ValueError(f"transfer_mode invalide : {self.transfer_mode!r} (choix : scp, sshfs)")
++            raise ValueError(
++                f"transfer_mode invalide : {self.transfer_mode!r} (choix : scp, sshfs)"
++            )
+ 
+ 
+ def connect_switch(cfg: Config | InspectConfig):
+@@ -823,21 +894,27 @@
+             installed = conn.send_command("display install active")
+             filename = Path(cfg.feature_bin_path).name if cfg.feature_bin_path else None
+             if not filename:
+-                resolved = resolve_feature_bin(cfg.feature_bin_dir, model, report["software_version"])
++                resolved = resolve_feature_bin(
++                    cfg.feature_bin_dir, model, report["software_version"]
++                )
+                 filename = resolved.name if resolved else None
+             report["feature_bin_checked"] = filename
+-            report["feature_already_active"] = (filename in installed) if filename else None
++            report["feature_already_active"] = (
++                (filename in installed) if filename else None
++            )
+         elif report["packet_capture_support"] == "builtin":
+-            # Aucun modèle de MODEL_PROFILES n'utilise ce profil à ce jour
+-            # (voir CLAUDE.md) — branche conservée par cohérence avec
+-            # _prepare_switch, pour le jour où un modèle "natif" existera.
+-            logger.debug("inspect | display packet-capture summary")
+-            summary = conn.send_command("display packet-capture summary")
++            # MSR4000
++            logger.debug("inspect | packet-capture ?")
++            summary = conn.send_command("packet-capture ?")
++            if "local" in summary:
++                cfg.packet_capture_cmd = "packet-capture local"
+             report["packet_capture_summary"] = summary.strip()
+             report["feature_already_active"] = True
+ 
+         service_label = "scp" if cfg.transfer_mode == "scp" else "sftp"
+-        command = "scp server enable" if cfg.transfer_mode == "scp" else "sftp server enable"
++        command = (
++            "scp server enable" if cfg.transfer_mode == "scp" else "sftp server enable"
++        )
+         check_cmd = f"display current-configuration | include {service_label}"
+         logger.debug("inspect | {cmd}", cmd=check_cmd)
+         current_cfg = conn.send_command(check_cmd)
+@@ -846,7 +923,9 @@
+         logger.debug("inspect | display ntp-service status")
+         ntp_status = conn.send_command("display ntp-service status")
+         report["ntp_synced"] = is_ntp_synchronized(ntp_status)
+-        report["ntp_detail"] = next((line.strip() for line in ntp_status.splitlines() if line.strip()), "")
++        report["ntp_detail"] = next(
++            (line.strip() for line in ntp_status.splitlines() if line.strip()), ""
++        )
+ 
+         logger.info(
+             "inspect | modèle={model} version={version} packet_capture={pc} feature_active={fa} "
+@@ -889,7 +968,9 @@
+     else:
+         lines.append("Modèle : non détecté automatiquement (--model pour le forcer)")
+ 
+-    lines.append(f"Version logicielle : {report.get('software_version') or 'non détectée'}")
++    lines.append(
++        f"Version logicielle : {report.get('software_version') or 'non détectée'}"
++    )
+ 
+     support = report.get("packet_capture_support")
+     notes = report.get("model_notes") or ""
+@@ -897,7 +978,9 @@
+         active = report.get("feature_already_active")
+         active_text = "oui" if active else "non" if active is False else "indéterminé"
+         lines.append(f"packet-capture : à installer — {notes}")
+-        lines.append(f"  .bin vérifié : {report.get('feature_bin_checked') or '<non résolu>'}")
++        lines.append(
++            f"  .bin vérifié : {report.get('feature_bin_checked') or '<non résolu>'}"
++        )
+         lines.append(f"  déjà active : {active_text}")
+     elif support == "builtin":
+         lines.append(f"packet-capture : natif — {notes}")
+@@ -1007,6 +1090,33 @@
+     return sorted(filenames)
+ 
+ 
++def delete_remote_all_file_capture(conn, capture_prefix) -> None:
++    """Supprime les fichiers captures restantes de la flash via une commande CLI (pas SCP).
++
++    Args:
++        conn: session netmiko déjà connectée.
++        capture_prefix: prefixe de capture
++    """
++    try:
++        files = list_remote_pcap_files(conn, capture_prefix)
++    except Exception:
++        logger.exception(
++            "delete_remote_all_file_capture | échec de la liste des fichiers distants"
++        )
++        return
++
++    if len(files) <= 0:
++        return  # rien à faire : 0
++
++    # on efface tous les fichiers de capture encore présent
++    for filename in files:
++        delete_remote_file(conn, filename)
++    logger.info(
++        "delete_remote_all_file_capture | fin de nettoyage des fichiers captures distants"
++    )
++    return
++
++
+ def delete_remote_file(conn, filename: str) -> None:
+     """Supprime un fichier de la flash via une commande CLI (pas SCP).
+ 
+@@ -1082,7 +1192,9 @@
+             RuntimeError: si `prepare()` n'a pas été appelé avant.
+         """
+         if not self._prepared:
+-            raise RuntimeError("prepare() doit être appelé avant start_capture_blocking()")
++            raise RuntimeError(
++                "prepare() doit être appelé avant start_capture_blocking()"
++            )
+         self.state.started_at = time.time()
+         self.state.capture_started.set()
+         self._run_capture_blocking()
+@@ -1106,30 +1218,40 @@
+             self.state.model = model
+             logger.info(
+                 "prepare_switch | modèle={model} comware={comware} note={note}",
+-                model=model, comware=profile["comware"], note=profile["notes"],
++                model=model,
++                comware=profile["comware"],
++                note=profile["notes"],
+             )
+ 
+             if profile["packet_capture"] == "unsupported":
+-                raise RuntimeError(f"packet-capture non supporté sur {model} : {profile['notes']}")
++                raise RuntimeError(
++                    f"packet-capture non supporté sur {model} : {profile['notes']}"
++                )
+ 
+-            self.state.needs_feature_install = profile["packet_capture"] == "installable"
++            self.state.needs_feature_install = (
++                profile["packet_capture"] == "installable"
++            )
+ 
+             self._ensure_transfer_service(conn)
+             self._ensure_ntp(conn)
+ 
+             if not self.state.needs_feature_install:
+-                logger.debug("prepare_switch | display packet-capture summary")
+-                summary = conn.send_command("display packet-capture summary")
++                logger.debug("prepare_switch | packet-capture ?")
++                summary = conn.send_command("packet-capture ?")
++
+                 logger.info(
+-                    "prepare_switch | packet-capture natif sur {model}, résumé={summary}",
+-                    model=model, summary=summary.strip() or "<vide>",
++                    "prepare_switch | packet-capture installé sur {model}, résumé={summary}",
++                    model=model,
++                    summary=summary.strip() or "<vide>",
+                 )
+                 self.state.feature_already_installed = True
+                 return
+ 
+             logger.debug("prepare_switch | display install active")
+             installed = conn.send_command("display install active")
+-            logger.debug("prepare_switch | features actives={installed}", installed=installed)
++            logger.debug(
++                "prepare_switch | features actives={installed}", installed=installed
++            )
+ 
+             software_version = detect_software_version(version_output)
+             logger.info(
+@@ -1138,7 +1260,9 @@
+             )
+ 
+             if not self.cfg.feature_bin_path:
+-                resolved = resolve_feature_bin(self.cfg.feature_bin_dir, model, software_version)
++                resolved = resolve_feature_bin(
++                    self.cfg.feature_bin_dir, model, software_version
++                )
+                 if resolved is None:
+                     raise RuntimeError(
+                         f"Aucun .bin packet-capture trouvé sous {self.cfg.feature_bin_dir}/{model} "
+@@ -1149,9 +1273,13 @@
+                 logger.info("prepare_switch | feature bin résolu={path}", path=resolved)
+ 
+             self.cfg.feature_filename = Path(self.cfg.feature_bin_path).name
+-            self.state.feature_already_installed = self.cfg.feature_filename in installed
++            self.state.feature_already_installed = (
++                self.cfg.feature_filename in installed
++            )
+             if self.state.feature_already_installed:
+-                logger.info("prepare_switch | feature déjà installée, activation sautée")
++                logger.info(
++                    "prepare_switch | feature déjà installée, activation sautée"
++                )
+         finally:
+             conn.disconnect()
+ 
+@@ -1166,7 +1294,11 @@
+         Args:
+             conn: session netmiko déjà connectée.
+         """
+-        command = "scp server enable" if self.cfg.transfer_mode == "scp" else "sftp server enable"
++        command = (
++            "scp server enable"
++            if self.cfg.transfer_mode == "scp"
++            else "sftp server enable"
++        )
+         service_label = "scp" if self.cfg.transfer_mode == "scp" else "sftp"
+ 
+         check_cmd = f"display current-configuration | include {service_label}"
+@@ -1174,7 +1306,8 @@
+         current_cfg = conn.send_command(check_cmd)
+         logger.debug(
+             "ensure_transfer_service | conf {label}={cfg}",
+-            label=service_label, cfg=current_cfg.strip() or "<aucune>",
++            label=service_label,
++            cfg=current_cfg.strip() or "<aucune>",
+         )
+         if command not in current_cfg:
+             logger.info("ensure_transfer_service | activation : {cmd}", cmd=command)
+@@ -1206,10 +1339,15 @@
+         status = conn.send_command("display ntp-service status")
+         synced = is_ntp_synchronized(status)
+         self.state.ntp_synced = synced
+-        self.state.ntp_detail = next((line.strip() for line in status.splitlines() if line.strip()), "")
++        self.state.ntp_detail = next(
++            (line.strip() for line in status.splitlines() if line.strip()), ""
++        )
+ 
+         if synced:
+-            logger.info("ensure_ntp | horloge synchronisée : {detail}", detail=self.state.ntp_detail)
++            logger.info(
++                "ensure_ntp | horloge synchronisée : {detail}",
++                detail=self.state.ntp_detail,
++            )
+             return
+ 
+         logger.warning("ensure_ntp | horloge non synchronisée sur ce switch")
+@@ -1221,7 +1359,10 @@
+             )
+             return
+ 
+-        logger.info("ensure_ntp | configuration du serveur NTP {server}", server=self.cfg.ntp_server)
++        logger.info(
++            "ensure_ntp | configuration du serveur NTP {server}",
++            server=self.cfg.ntp_server,
++        )
+         conn.config_mode()
+         logger.debug("ensure_ntp | ntp-service enable")
+         conn.send_command("ntp-service enable", expect_string=r"\]")
+@@ -1239,7 +1380,9 @@
+         status_after = conn.send_command("display ntp-service status")
+         synced_after = is_ntp_synchronized(status_after)
+         self.state.ntp_synced = synced_after
+-        self.state.ntp_detail = next((line.strip() for line in status_after.splitlines() if line.strip()), "")
++        self.state.ntp_detail = next(
++            (line.strip() for line in status_after.splitlines() if line.strip()), ""
++        )
+         if synced_after:
+             logger.info("ensure_ntp | synchronisation confirmée après configuration")
+         else:
+@@ -1261,9 +1404,12 @@
+             "sshfs",
+             f"{self.cfg.ssh_user}@{self.cfg.switch_ip}:/",
+             str(mnt),
+-            "-o", "reconnect",
+-            "-o", "ServerAliveInterval=15",
+-            "-o", "ServerAliveCountMax=3",
++            "-o",
++            "reconnect",
++            "-o",
++            "ServerAliveInterval=15",
++            "-o",
++            "ServerAliveCountMax=3",
+         ]
+         logger.info("mount_sshfs | {cmd}", cmd=" ".join(cmd))
+         subprocess.run(cmd, check=True)
+@@ -1271,7 +1417,9 @@
+     @staticmethod
+     def _is_mounted(path: Path) -> bool:
+         """Indique si `path` est un point de montage actif."""
+-        return subprocess.run(["mountpoint", "-q", str(path)]).returncode == 0
++        return (
++            subprocess.run(["mountpoint", "-q", str(path)], check=False).returncode == 0
++        )
+ 
+     def _push_feature_file(self) -> None:
+         """Pousse le .bin de la feature sur la flash, sauf si déjà installée.
+@@ -1295,8 +1443,10 @@
+         # propre à la CLI Comware (dir/delete/install...), pas au SCP lui-même.
+         # La passer ici casse le transfert (le switch ne trouve pas
+         # "flash:/<fichier>" en tant que chemin SCP).
+-        remote_path = f"/{self.cfg.feature_filename}"
+-        logger.info("push_feature_file | (scp) {src} -> {dst}", src=src, dst=remote_path)
++        remote_path = f"{self.cfg.feature_filename}"
++        logger.info(
++            "push_feature_file | (scp) {src} -> {dst}", src=src, dst=remote_path
++        )
+         ssh_client = open_scp_ssh_client(self.cfg)
+         try:
+             scp_put(ssh_client, src, remote_path)
+@@ -1334,10 +1484,16 @@
+         `CaptureRotationThread`.
+         """
+         conn = connect_switch(self.cfg)
++
++        delete_remote_all_file_capture(conn, self.cfg.capture_prefix)
+         try:
+-            filter_clause = f'capture-filter "{self.cfg.capture_filter}" ' if self.cfg.capture_filter else ""
++            filter_clause = (
++                f'capture-filter "not (host {self.cfg.switch_ip} and port 22) and {self.cfg.capture_filter}" '
++                if self.cfg.capture_filter
++                else f'capture-filter "not (host {self.cfg.switch_ip} and port 22)" '
++            )
+             cmd = (
+-                f"packet-capture interface {self.cfg.capture_interface} "
++                f"{self.cfg.packet_capture_cmd} interface {self.cfg.capture_interface} "
+                 f"{filter_clause}"
+                 f"limit-captured-frames 0 "
+                 f"capture-ring-buffer duration {self.cfg.rotation_seconds} "
+@@ -1381,7 +1537,9 @@
+             logger.info(
+                 "run_rpcap | connectez Wireshark à rpcap://{ip}:{port}/{iface} "
+                 "(Capture > Options > Manage Interfaces > Remote Interfaces, ou -i rpcap://...)",
+-                ip=self.cfg.switch_ip, port=self.cfg.rpcap_port, iface=self.cfg.capture_interface,
++                ip=self.cfg.switch_ip,
++                port=self.cfg.rpcap_port,
++                iface=self.cfg.capture_interface,
+             )
+ 
+             while not self.state.stop_event.is_set():
+@@ -1390,12 +1548,13 @@
+             stop_cmd = "packet-capture stop"
+             logger.info("run_rpcap | arrêt de la capture : {cmd}", cmd=stop_cmd)
+             stop_output = conn.send_command_timing(stop_cmd, read_timeout=15)
+-            logger.debug("run_rpcap | sortie arrêt={output}", output=stop_output.strip())
++            logger.debug(
++                "run_rpcap | sortie arrêt={output}", output=stop_output.strip()
++            )
+         finally:
+             conn.disconnect()
+ 
+ 
+-
+ # --------------------------------------------------------------------------- #
+ # Thread 2 : rotation + réassemblage live vers Wireshark
+ # --------------------------------------------------------------------------- #
+@@ -1424,7 +1583,7 @@
+         self.spool_dir.mkdir(parents=True, exist_ok=True)
+ 
+         # Mode "fifo"
+-        self.fifo_path = Path(cfg.fifo_path)
++        self.fifo_path = Path(f"{cfg.fifo_path}-{cfg.switch_ip}")
+         self._wrote_global_header = False
+         self._wireshark_proc: subprocess.Popen | None = None
+         self._fifo_fd = None
+@@ -1459,7 +1618,9 @@
+         try:
+             write_capture_metadata(self.cfg, self.state)
+         except OSError:
+-            logger.exception("run | échec écriture du sidecar de métadonnées (non bloquant)")
++            logger.exception(
++                "run | échec écriture du sidecar de métadonnées (non bloquant)"
++            )
+ 
+         try:
+             while not self.state.stop_event.is_set():
+@@ -1484,7 +1645,9 @@
+     def _launch_wireshark(self) -> None:
+         """Lance Wireshark en lecture sur le FIFO et ouvre le FIFO en écriture."""
+         logger.info("launch_wireshark | fifo={path}", path=self.fifo_path)
+-        self._wireshark_proc = subprocess.Popen(["wireshark", "-k", "-i", str(self.fifo_path)])
++        self._wireshark_proc = subprocess.Popen(
++            ["wireshark", "-k", "-i", str(self.fifo_path)]
++        )
+         logger.info("launch_wireshark | en attente que Wireshark ouvre le FIFO")
+         # bloque jusqu'à ce qu'un lecteur (wireshark) ouvre l'autre bout
+         self._fifo_fd = open(self.fifo_path, "wb", buffering=0)
+@@ -1519,7 +1682,9 @@
+         try:
+             files = sorted(flash_dir.glob(f"{self.cfg.capture_prefix}*.pcap"))
+         except FileNotFoundError:
+-            logger.warning("poll_once_sshfs | point de montage inaccessible pour l'instant")
++            logger.warning(
++                "poll_once_sshfs | point de montage inaccessible pour l'instant"
++            )
+             return
+ 
+         if len(files) <= 1:
+@@ -1541,7 +1706,7 @@
+         # Chemin SCP réel, sans "flash:" (voir _push_feature_file) : seule la
+         # commande CLI 'dir'/'delete' (list_remote_pcap_files/delete_remote_file,
+         # via _poll_conn) utilise encore le préfixe "flash:/".
+-        remote_path = f"/{filename}"
++        remote_path = f"{filename}"
+         # Connexion SCP dédiée, ouverte puis refermée pour CE fichier
+         # uniquement (au lieu de réutiliser une connexion ouverte une seule
+         # fois en début de capture) : le switch ferme apparemment la session
+@@ -1557,11 +1722,16 @@
+             )
+             return
+         try:
+-            logger.info("process_closed_file_scp | {src} -> {dst}", src=remote_path, dst=local_copy)
++            logger.info(
++                "process_closed_file_scp | {src} -> {dst}",
++                src=remote_path,
++                dst=local_copy,
++            )
+             scp_get(scp_ssh_client, remote_path, local_copy)
+         except Exception:
+             logger.exception(
+-                "process_closed_file_scp | échec scp de {f}, nouvel essai au prochain poll", f=filename,
++                "process_closed_file_scp | échec scp de {f}, nouvel essai au prochain poll",
++                f=filename,
+             )
+             return
+         finally:
+@@ -1572,9 +1742,14 @@
+ 
+         try:
+             delete_remote_file(self._poll_conn, filename)
+-            logger.info("process_closed_file_scp | supprimé côté switch={f}", f=filename)
++            logger.info(
++                "process_closed_file_scp | supprimé côté switch={f}", f=filename
++            )
+         except Exception:
+-            logger.exception("process_closed_file_scp | échec suppression de {f} (non bloquant)", f=filename)
++            logger.exception(
++                "process_closed_file_scp | échec suppression de {f} (non bloquant)",
++                f=filename,
++            )
+ 
+         if self.cfg.output_mode == "tap":
+             self._feed_into_tap(local_copy)
+@@ -1589,19 +1764,29 @@
+         """
+         local_copy = self.spool_dir / remote_file.name
+         try:
+-            logger.info("process_closed_file_sshfs | {src} -> {dst}", src=remote_file, dst=local_copy)
++            logger.info(
++                "process_closed_file_sshfs | {src} -> {dst}",
++                src=remote_file,
++                dst=local_copy,
++            )
+             shutil.copy(remote_file, local_copy)
+         except Exception:
+             logger.exception(
+-                "process_closed_file_sshfs | échec copie de {f}, nouvel essai au prochain poll", f=remote_file,
++                "process_closed_file_sshfs | échec copie de {f}, nouvel essai au prochain poll",
++                f=remote_file,
+             )
+             return
+ 
+         try:
+             remote_file.unlink()
+-            logger.info("process_closed_file_sshfs | supprimé côté switch={f}", f=remote_file)
++            logger.info(
++                "process_closed_file_sshfs | supprimé côté switch={f}", f=remote_file
++            )
+         except Exception:
+-            logger.exception("process_closed_file_sshfs | échec suppression de {f} (non bloquant)", f=remote_file)
++            logger.exception(
++                "process_closed_file_sshfs | échec suppression de {f} (non bloquant)",
++                f=remote_file,
++            )
+ 
+         if self.cfg.output_mode == "tap":
+             self._feed_into_tap(local_copy)
+@@ -1622,7 +1807,10 @@
+             pcap_file: fichier .pcap local déjà rapatrié.
+         """
+         if self._tap_writer is None:
+-            logger.warning("feed_into_tap | interface TAP pas encore prête, {f} ignoré", f=pcap_file)
++            logger.warning(
++                "feed_into_tap | interface TAP pas encore prête, {f} ignoré",
++                f=pcap_file,
++            )
+             return
+ 
+         file_size = pcap_file.stat().st_size
+@@ -1637,7 +1825,9 @@
+ 
+         logger.info(
+             "feed_into_tap | {n} trame(s) réinjectée(s) dans {iface} (depuis {f})",
+-            n=frame_count, iface=self.cfg.tap_interface, f=pcap_file,
++            n=frame_count,
++            iface=self.cfg.tap_interface,
++            f=pcap_file,
+         )
+         self.state.files_merged += 1
+         self.state.bytes_merged += file_size
+@@ -1662,7 +1852,9 @@
+             pcap_file: fichier .pcap local déjà rapatrié.
+         """
+         if self._fifo_fd is None:
+-            logger.warning("feed_into_fifo | fifo pas encore prêt, {f} ignoré", f=pcap_file)
++            logger.warning(
++                "feed_into_fifo | fifo pas encore prêt, {f} ignoré", f=pcap_file
++            )
+             return
+ 
+         file_size = pcap_file.stat().st_size
+@@ -1670,21 +1862,27 @@
+         with open(pcap_file, "rb") as f:
+             header = f.read(PCAP_GLOBAL_HEADER_LEN)
+             if len(header) < PCAP_GLOBAL_HEADER_LEN:
+-                logger.warning("feed_into_fifo | {f} trop petit / pcap invalide, ignoré", f=pcap_file)
++                logger.warning(
++                    "feed_into_fifo | {f} trop petit / pcap invalide, ignoré",
++                    f=pcap_file,
++                )
+                 return
+ 
+             magic = struct.unpack("<I", header[:4])[0]
+             if magic not in PCAP_MAGICS:
+                 logger.warning(
+                     "feed_into_fifo | {f} magic inattendu ({magic:#x}), probablement pcapng, ignoré",
+-                    f=pcap_file, magic=magic,
++                    f=pcap_file,
++                    magic=magic,
+                 )
+                 return
+ 
+             if not self._wrote_global_header:
+                 self._fifo_fd.write(header)
+                 self._wrote_global_header = True
+-                logger.info("feed_into_fifo | en-tête global écrit (depuis {f})", f=pcap_file)
++                logger.info(
++                    "feed_into_fifo | en-tête global écrit (depuis {f})", f=pcap_file
++                )
+ 
+             while True:
+                 chunk = f.read(65536)
+@@ -1709,7 +1907,8 @@
+         """Ferme le FIFO/TAP (output_mode) et les connexions SCP/SSH (transfer_mode)."""
+         logger.info(
+             "cleanup | nettoyage du thread de rotation (output={out}, transfer={trans})",
+-            out=self.cfg.output_mode, trans=self.cfg.transfer_mode,
++            out=self.cfg.output_mode,
++            trans=self.cfg.transfer_mode,
+         )
+ 
+         if self._poll_conn:
+@@ -1805,30 +2004,42 @@
+             try:
+                 logger.debug("uninstall | display version")
+                 version_output = conn.send_command("display version")
+-                model = self.cfg.model or self.state.model or detect_model(version_output)
++                model = (
++                    self.cfg.model or self.state.model or detect_model(version_output)
++                )
+                 if not model or model not in MODEL_PROFILES:
+-                    raise RuntimeError("Modèle non déterminé, impossible de savoir s'il y a une feature à retirer")
++                    raise RuntimeError(
++                        "Modèle non déterminé, impossible de savoir s'il y a une feature à retirer"
++                    )
+ 
+                 profile = MODEL_PROFILES[model]
+                 if profile["packet_capture"] != "installable":
+-                    message = f"{model} : packet-capture natif, aucune feature à désinstaller"
++                    message = (
++                        f"{model} : packet-capture natif, aucune feature à désinstaller"
++                    )
+                     logger.info("uninstall | {msg}", msg=message)
++                    delete_remote_all_file_capture(conn, self.cfg.capture_prefix)
+                     self._finish(True, message)
+                     return
+ 
+                 filename = self.cfg.feature_filename
+                 if not filename:
++                    delete_remote_all_file_capture(conn, self.cfg.capture_prefix)
+                     logger.debug("uninstall | display install active")
+                     installed = conn.send_command("display install active")
+                     match = re.search(r"(\S*packet-capture\S*\.bin)", installed)
+                     if not match:
+-                        message = "Aucune feature packet-capture active trouvée sur ce slot"
++                        message = (
++                            "Aucune feature packet-capture active trouvée sur ce slot"
++                        )
+                         logger.info("uninstall | {msg}", msg=message)
+                         self._finish(True, message)
+                         return
+                     filename = match.group(1)
+ 
+-                deactivate_cmd = f"install deactivate feature flash:/{filename} slot {self.cfg.slot}"
++                deactivate_cmd = (
++                    f"install deactivate feature flash:/{filename} slot {self.cfg.slot}"
++                )
+                 logger.info("uninstall | {cmd}", cmd=deactivate_cmd)
+                 output = conn.send_command_timing(deactivate_cmd, read_timeout=90)
+                 if "Continue?" in output or "[Y/N]" in output:
+@@ -1837,19 +2048,27 @@
+                 logger.debug("uninstall | sortie deactivate={output}", output=output)
+ 
+                 logger.info("uninstall | install commit")
+-                commit_output = conn.send_command_timing("install commit", read_timeout=90)
++                commit_output = conn.send_command_timing(
++                    "install commit", read_timeout=90
++                )
+                 logger.debug("uninstall | sortie commit={output}", output=commit_output)
+ 
+                 if self.remove_bin_from_flash:
+                     delete_cmd = f"delete /unreserved flash:/{filename}"
+                     logger.info("uninstall | {cmd}", cmd=delete_cmd)
+-                    delete_output = conn.send_command_timing(delete_cmd, read_timeout=30)
++                    delete_output = conn.send_command_timing(
++                        delete_cmd, read_timeout=30
++                    )
+                     if "Continue?" in delete_output or "[Y/N]" in delete_output:
+                         logger.debug("uninstall | confirmation envoyée (y)")
+                         delete_output += conn.send_command_timing("y", read_timeout=30)
+-                    logger.debug("uninstall | sortie delete={output}", output=delete_output)
++                    logger.debug(
++                        "uninstall | sortie delete={output}", output=delete_output
++                    )
+ 
+-                self._finish(True, f"Feature {filename} désinstallée sur le slot {self.cfg.slot}")
++                self._finish(
++                    True, f"Feature {filename} désinstallée sur le slot {self.cfg.slot}"
++                )
+             finally:
+                 conn.disconnect()
+         except Exception as exc:
+@@ -1928,22 +2147,33 @@
+         """Normalise et valide les champs obligatoires selon `mode`."""
+         if not self.ssh_password:
+             self.ssh_password = os.environ.get("SWITCH_SSH_PASSWORD", "")
+-        missing = [n for n, v in (("switch_ip", self.switch_ip), ("ssh_user", self.ssh_user)) if not v]
++        missing = [
++            n
++            for n, v in (("switch_ip", self.switch_ip), ("ssh_user", self.ssh_user))
++            if not v
++        ]
+         if missing:
+             raise ValueError(f"Champs obligatoires manquants : {', '.join(missing)}")
+         if not self.ssh_password:
+-            raise ValueError("Mot de passe SSH manquant (champ 'ssh_password' ou SWITCH_SSH_PASSWORD)")
++            raise ValueError(
++                "Mot de passe SSH manquant (champ 'ssh_password' ou SWITCH_SSH_PASSWORD)"
++            )
+         if self.mode not in ("local", "gre"):
+             raise ValueError(f"mode invalide : {self.mode!r} (choix : local, gre)")
+         if self.direction not in ("both", "inbound", "outbound"):
+-            raise ValueError(f"direction invalide : {self.direction!r} (choix : both, inbound, outbound)")
++            raise ValueError(
++                f"direction invalide : {self.direction!r} (choix : both, inbound, outbound)"
++            )
+         if not self.source_interfaces:
+-            raise ValueError("au moins une interface source (source_interfaces) est requise")
++            raise ValueError(
++                "au moins une interface source (source_interfaces) est requise"
++            )
+         if self.mode == "local" and not self.monitor_interface:
+             raise ValueError("monitor_interface requis en mode 'local'")
+         if self.mode == "gre":
+             gre_missing = [
+-                n for n, v in (
++                n
++                for n, v in (
+                     ("tunnel_local_ip", self.tunnel_local_ip),
+                     ("tunnel_ip", self.tunnel_ip),
+                     ("remote_ip", self.remote_ip),
+@@ -1951,7 +2181,9 @@
+                 if not v
+             ]
+             if gre_missing:
+-                raise ValueError(f"champs requis en mode 'gre' manquants : {', '.join(gre_missing)}")
++                raise ValueError(
++                    f"champs requis en mode 'gre' manquants : {', '.join(gre_missing)}"
++                )
+ 
+ 
+ def configure_local_mirror(conn, cfg: MirrorConfig) -> None:
+@@ -1977,7 +2209,10 @@
+     conn.exit_config_mode()
+     logger.info(
+         "configure_local_mirror | groupe {gid} : {srcs} ({dir}) -> {mon}",
+-        gid=cfg.group_id, srcs=ports, dir=cfg.direction, mon=cfg.monitor_interface,
++        gid=cfg.group_id,
++        srcs=ports,
++        dir=cfg.direction,
++        mon=cfg.monitor_interface,
+     )
+ 
+ 
+@@ -2007,7 +2242,9 @@
+             logger.debug("configure_gre_mirror | {cmd}", cmd=command)
+             conn.send_command(command, expect_string=r"\]")
+         logger.debug("configure_gre_mirror | port service-loopback group 1")
+-        output = conn.send_command_timing("port service-loopback group 1", read_timeout=15)
++        output = conn.send_command_timing(
++            "port service-loopback group 1", read_timeout=15
++        )
+         if "Continue?" in output or "[Y/N]" in output:
+             logger.debug("configure_gre_mirror | confirmation envoyée (y)")
+             conn.send_command_timing("y", read_timeout=15)
+@@ -2031,7 +2268,11 @@
+     conn.exit_config_mode()
+     logger.info(
+         "configure_gre_mirror | groupe {gid} : {srcs} ({dir}) -> tunnel{tid} (GRE vers {remote})",
+-        gid=cfg.group_id, srcs=ports, dir=cfg.direction, tid=cfg.tunnel_id, remote=cfg.remote_ip,
++        gid=cfg.group_id,
++        srcs=ports,
++        dir=cfg.direction,
++        tid=cfg.tunnel_id,
++        remote=cfg.remote_ip,
+     )
+ 
+ 
+@@ -2068,7 +2309,9 @@
+     packet-capture).
+     """
+ 
+-    def __init__(self, mirror_cfg: MirrorConfig, teardown: bool = False, on_done=None) -> None:
++    def __init__(
++        self, mirror_cfg: MirrorConfig, teardown: bool = False, on_done=None
++    ) -> None:
+         """Initialise le thread.
+ 
+         Args:
+@@ -2098,10 +2341,15 @@
+             try:
+                 if self.teardown:
+                     teardown_mirror(conn, self.mirror_cfg)
+-                    self._finish(True, f"Mirroring groupe {self.mirror_cfg.group_id} retiré")
++                    self._finish(
++                        True, f"Mirroring groupe {self.mirror_cfg.group_id} retiré"
++                    )
+                 elif self.mirror_cfg.mode == "local":
+                     configure_local_mirror(conn, self.mirror_cfg)
+-                    self._finish(True, f"Mirroring local configuré (groupe {self.mirror_cfg.group_id})")
++                    self._finish(
++                        True,
++                        f"Mirroring local configuré (groupe {self.mirror_cfg.group_id})",
++                    )
+                 else:
+                     configure_gre_mirror(conn, self.mirror_cfg)
+                     self._finish(

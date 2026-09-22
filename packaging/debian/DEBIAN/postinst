@@ -1,0 +1,79 @@
+#!/bin/sh
+set -e
+
+# netmiko, loguru et PyYAML sont maintenant des Depends APT natifs (voir
+# DEBIAN/control) — apt-get est privilégié sur pip, plus de repli pip ici.
+# GTK4/PyGObject sont en Recommends (best-effort, pas bloquants) : leur
+# absence n'empêche pas l'installation, seule la CLI (-c) sera utilisable.
+
+# Groupe système + arborescence, alignés sur install.sh (voir ce script pour
+# l'installation "sans paquet" équivalente).
+GROUP_NAME=switch-capture
+groupadd -f -r "$GROUP_NAME"
+
+mkdir -p /etc/switch-capture
+install -d -m 2775 -o root -g "$GROUP_NAME" /etc/switch-capture/feature-bin
+install -d -m 2775 -o root -g "$GROUP_NAME" /var/lib/switch-capture
+install -d -m 2775 -o root -g "$GROUP_NAME" /var/lib/switch-capture/mount
+install -d -m 2775 -o root -g "$GROUP_NAME" /var/lib/switch-capture/spool
+install -d -m 2775 -o root -g "$GROUP_NAME" /var/lib/switch-capture/archive
+
+chmod 755 /usr/bin/switch-capture
+
+# switch-capture-taphelper : seul morceau de switch-capture qui a besoin de
+# privilèges (créer/activer une interface TAP, mode --output-mode tap).
+# cap_net_admin+ep, jamais setuid/root — le process garde l'UID réel de
+# l'utilisateur qui l'invoque. Best-effort : setcap vient de libcap2-bin
+# (Recommends, pas Depends) ; son absence n'empêche pas l'installation, le
+# mode TAP nécessitera alors de lancer switch-capture en root, comme avant
+# cette fonctionnalité.
+if command -v setcap >/dev/null 2>&1; then
+    if setcap cap_net_admin+ep /usr/lib/switch-capture/switch-capture-taphelper; then
+        TAPHELPER_STATUS="disponible (mode TAP sans root)"
+    else
+        TAPHELPER_STATUS="setcap a échoué — mode TAP nécessitera root (sudo setcap cap_net_admin+ep /usr/lib/switch-capture/switch-capture-taphelper)"
+    fi
+else
+    TAPHELPER_STATUS="setcap absent (installez libcap2-bin) — mode TAP nécessitera root en attendant"
+fi
+
+# Best-effort : absents sur certains systèmes minimaux, jamais bloquant
+# (l'icône/l'entrée menu restent correctes même sans ce rafraîchissement
+# immédiat — elles seront prises en compte au prochain rafraîchissement du
+# thème/du cache par le système).
+command -v gtk-update-icon-cache >/dev/null 2>&1 && gtk-update-icon-cache -q -t -f /usr/share/icons/hicolor 2>/dev/null || true
+command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database -q /usr/share/applications 2>/dev/null || true
+
+if python3 -c "import gi; gi.require_version('Gtk', '4.0'); from gi.repository import Gtk" >/dev/null 2>&1; then
+    GTK_STATUS="disponible (démarrage graphique par défaut sans argument)"
+else
+    GTK_STATUS="absente (CLI uniquement — installez python3-gi et gir1.2-gtk-4.0 pour l'activer)"
+fi
+
+cat <<EOF
+
+switch-capture est installé. Interface graphique : ${GTK_STATUS}
+Mode TAP sans root (switch-capture-taphelper) : ${TAPHELPER_STATUS}
+
+  - Dépôt des .bin packet-capture : /etc/switch-capture/feature-bin/
+    (voir /usr/share/doc/switch-capture/README-feature-bin.md)
+    Pour y importer un dépôt déjà préparé (structure <modèle>/<version>/*.bin) :
+      switch-capture -c import-bin /chemin/vers/votre/feature-bin
+  - Données runtime (mount/spool/archive) : /var/lib/switch-capture/
+  - Documentation : /usr/share/doc/switch-capture/INSTALL.md
+                     /usr/share/doc/switch-capture/USAGE.md
+  - Exemple de config : /usr/share/doc/switch-capture/config.yaml.example
+
+Le groupe système 'switch-capture' possède ces dossiers en écriture (setgid).
+Pour qu'un utilisateur non-root puisse y écrire :
+  sudo usermod -aG switch-capture <votre_utilisateur>
+
+Test rapide :
+  switch-capture --help
+  switch-capture              # GUI si dispo, sinon aide CLI
+  switch-capture -c capture --help
+  switch-capture -g           # force la GUI
+
+EOF
+
+exit 0

@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=switch-capture
+GenericName=Capture réseau HPE Comware
+Comment=Orchestration de capture réseau sur switches HPE Comware (SSH, TAP/FIFO, GUI GTK4)
+Exec=switch-capture -g
+Icon=org.transcende.switch_capture
+Terminal=false
+NoDisplay=false
+StartupNotify=true
+StartupWMClass=org.transcende.switch_capture
+Categories=Network;
+Keywords=réseau;capture;switch;HPE;Comware;SSH;TAP;pcap;wireshark;
