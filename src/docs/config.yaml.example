@@ -1,0 +1,79 @@
+# Base de configuration optionnelle pour switch-capture.
+# Chaque clé peut aussi être passée en argument CLI (prioritaire sur ce fichier).
+# Usage : switch-capture capture --config config.yaml [--autres-options ...]
+#
+# La page Préférences de l'interface graphique (menu ☰, en haut à gauche)
+# lit/écrit exactement 4 des clés ci-dessous — slot, model, feature_bin_path,
+# keepass_path — dans ./config.yaml par défaut (dossier de lancement de
+# l'application). Elle ne touche jamais aux autres clés : un même fichier
+# config.yaml peut donc servir à la fois de préférences GUI et de base pour
+# `switch-capture capture --config` sans que les deux usages ne se marchent
+# dessus.
+
+switch_ip: 10.0.0.1
+ssh_user: mathilde
+# ssh_password: à NE PAS mettre ici en clair — utilisez la variable
+#   d'environnement SWITCH_SSH_PASSWORD, ou --ssh-password ponctuellement.
+
+# slot/model/feature_bin_path : réglages GUI Préférences (voir plus haut) —
+# également lisibles/écrasables ici pour un usage CLI par --config.
+slot: 1
+# model: 5130          # sinon auto-détecté via 'display version'
+
+feature_bin_dir: /etc/switch-capture/feature-bin
+# feature_bin_path: /chemin/exact/vers/le.bin   # pour forcer un fichier précis
+
+# keepass_path : réglage GUI Préférences (voir plus haut) — fichier .kdbx de
+# repli pour la mémorisation du mot de passe SSH quand le trousseau système
+# (libsecret/GNOME Keyring) est indisponible ; mot de passe maître de la
+# base via la variable d'environnement SWITCH_CAPTURE_KEEPASS_PASSWORD
+# (jamais dans ce fichier). Sans effet si le trousseau système est
+# disponible : celui-ci reste toujours prioritaire.
+# keepass_path: /home/mathilde/.local/share/switch-capture/vault.kdbx
+
+# transfer_mode: scp (défaut, recommandé) ou sshfs (legacy, nécessite mount_point)
+transfer_mode: scp
+mount_point: /var/lib/switch-capture/mount   # utilisé seulement si transfer_mode: sshfs
+
+capture_interface: GigabitEthernet1/0/1
+capture_basename: capture.pcap
+rotation_seconds: 20
+max_ring_files: 10
+capture_filter: "host 10.0.0.5 and tcp port 22"   # tcpdump-like, voir USAGE.md
+
+# hide_capture_traffic : true (défaut) exclut aussi le trafic SSH/SCP entre
+# cette machine et le switch, en plus de capture_filter ci-dessus ; false
+# pour le laisser apparaître dans la capture. Sans effet en output_mode: rpcap.
+# hide_capture_traffic: true
+
+# capture_direction : bidirection (défaut, entrant + sortant), inbound
+# (entrant seul, défaut Comware en l'absence de tout mot-clé) ou outbound
+# (sortant seul). S'applique aux modes fifo/tap/rpcap.
+# capture_direction: bidirection
+
+# output_mode : fifo (défaut, Wireshark auto-lancé), tap (interface virtuelle,
+# captures multiples simultanées) ou rpcap (natif Comware, réseau direct,
+# disponibilité selon modèle/version — voir CAPTURE-METHODS.md)
+output_mode: fifo
+# tap_interface: vcap1        # requis si output_mode: tap
+# tap_cleanup_on_stop: false  # supprime l'interface TAP à l'arrêt si true
+# tap_launch_wireshark: false # lance Wireshark sur l'interface TAP si true (voir USAGE.md)
+# tap_pace_playback: false    # réinjecte les trames selon leur écart d'origine ; mode tap seulement (voir USAGE.md)
+# tap_pace_max_gap_seconds: 2.0  # écart max entre 2 trames rejouées si tap_pace_playback: true
+# rpcap_port: 2002            # utilisé seulement si output_mode: rpcap
+
+# Étiquette libre du point de capture (ex: "client", "routeur-core") —
+# écrite dans le sidecar capture-meta.json, pour corréler plusieurs traces
+# d'un même trafic prises à des points différents.
+# capture_label: client
+
+# Sans horloges synchronisées entre plusieurs points de capture, les
+# timestamps ne sont pas comparables entre les traces (voir CAPTURE-METHODS.md).
+# ntp_server: 10.0.0.254   # configuré sur le switch si son horloge ne l'est pas déjà
+# ensure_ntp: true         # false pour sauter complètement la vérification
+
+spool_dir: /var/lib/switch-capture/spool
+# archive_dir: /var/lib/switch-capture/archive    # sinon suppression après fusion
+# archive_as_pcapng: true   # archive en .pcapng (recommandé) ; false = .pcap classique
+fifo_path: /var/lib/switch-capture/capture_live.fifo   # utilisé seulement si output_mode: fifo
+poll_interval: 5

@@ -1,0 +1,18 @@
+#!/bin/sh
+set -e
+
+# Best-effort, sur remove ET purge (dpkg supprime déjà les fichiers du
+# paquet lui-même, y compris l'icône/le .desktop — ceci ne fait que
+# rafraîchir les caches pour que leur disparition soit immédiate).
+command -v gtk-update-icon-cache >/dev/null 2>&1 && gtk-update-icon-cache -q -t -f /usr/share/icons/hicolor 2>/dev/null || true
+command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database -q /usr/share/applications 2>/dev/null || true
+
+if [ "$1" = "purge" ]; then
+    echo "switch-capture : /etc/switch-capture/ et /var/lib/switch-capture/ ne sont"
+    echo "pas supprimés automatiquement (contiennent potentiellement des .bin et des"
+    echo "captures de plusieurs Mo). Pour tout nettoyer :"
+    echo "  sudo rm -rf /etc/switch-capture /var/lib/switch-capture"
+    echo "  sudo groupdel switch-capture   # si plus aucun paquet/usage n'en dépend"
+fi
+
+exit 0

@@ -1,0 +1,59 @@
+name: CI
+
+"on":
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+  workflow_dispatch:
+
+jobs:
+  quality:
+    name: Qualité (lint, format, tests)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout du dépôt
+        uses: actions/checkout@v7
+
+      - name: Installation de uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          enable-cache: true
+
+      - name: Installation de Python
+        run: uv python install
+
+      - name: Installation des dépendances (groupe dev)
+        # Le groupe `dev` (pytest/keyring/pykeepass) est synchronisé par
+        # défaut par `uv sync` ; le groupe `quality` (ruff/coverage) est
+        # installé à la demande via `uv run --group quality`.
+        run: uv sync
+
+      - name: Lint (ruff check)
+        run: uv run --group quality ruff check .
+
+      - name: Formatage (ruff format --check)
+        run: uv run --group quality ruff format --check .
+
+      - name: Tests (pytest + couverture)
+        # Les tests GTK4 se sautent proprement si PyGObject n'est pas
+        # installé (tests/conftest.py::require_gtk4) ; `ip` (iproute2) est
+        # présent par défaut sur ubuntu-latest.
+        run: uv run --group quality coverage run -m pytest -q
+
+      - name: Rapport de couverture
+        run: |
+          uv run --group quality coverage report -m
+          uv run --group quality coverage xml
+
+      - name: Publication du rapport de couverture (artifact)
+        # coverage.xml (format Cobertura) ; conservé 14 jours, temps de
+        # téléchargement court.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.xml
+          retention-days: 14
+          if-no-files-found: warn
