@@ -33,7 +33,7 @@ jobs:
       - name: iproute2 (commande ip, absente des runners maison)
         run: |
           SUDO=""; if [ "$(id -u)" != "0" ]; then SUDO="sudo"; fi
-          command -v ip >/dev/null || { $SUDO apt-get update && $SUDO DEBIAN_FRONTEND=noninteractive apt-get install -y iproute2; }
+          command -v ip >/dev/null || { $SUDO apt-get update && $SUDO env DEBIAN_FRONTEND=noninteractive apt-get install -y iproute2; }
 
       - name: Lint (ruff check)
         run: uv run --group quality ruff check .
