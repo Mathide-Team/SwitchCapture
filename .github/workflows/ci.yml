@@ -10,7 +10,7 @@ name: CI
 jobs:
   quality:
     name: Qualité (lint, format, tests)
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.RUNS_ON_LINUX || '{"group":"maison","labels":["self-hosted","linux"]}') }}
 
     steps:
       - name: Checkout du dépôt
@@ -30,6 +30,11 @@ jobs:
         # installé à la demande via `uv run --group quality`.
         run: uv sync
 
+      - name: iproute2 (commande ip, absente des runners maison)
+        run: |
+          SUDO=""; if [ "$(id -u)" != "0" ]; then SUDO="sudo"; fi
+          command -v ip >/dev/null || { $SUDO apt-get update && $SUDO DEBIAN_FRONTEND=noninteractive apt-get install -y iproute2; }
+
       - name: Lint (ruff check)
         run: uv run --group quality ruff check .
 
@@ -39,7 +44,7 @@ jobs:
       - name: Tests (pytest + couverture)
         # Les tests GTK4 se sautent proprement si PyGObject n'est pas
         # installé (tests/conftest.py::require_gtk4) ; `ip` (iproute2) est
-        # présent par défaut sur ubuntu-latest.
+        # présent par défaut sur ubuntu-latest et installé ci-dessus sinon.
         run: uv run --group quality coverage run -m pytest -q
 
       - name: Rapport de couverture
