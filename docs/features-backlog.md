@@ -144,10 +144,14 @@ sans mélanger leurs paliers). `filename` accepté en `bytes` ou `str` selon la 
 (`_push_feature_file`, et un callback unique par `CaptureRotationThread`). 12 nouveaux tests
 dans `test_scp_transfer.py` (plutôt qu'un nouveau fichier : les faux backends SCP y sont déjà).
 
-**Non fait, délibérément** : la remontée **jusqu'à la page « Journal » de la GUI** et au CLI
-verbeux, pourtant au cœur de la proposition d'origine. Le callback journalise en DEBUG via
-loguru ; il n'alimente aucun widget GTK. À traiter séparément si le besoin se confirme — ne pas
-lire ce point comme entièrement clos.
+**Remontée GUI et CLI (session 65, issue #70)** : ~~non fait, délibérément~~. Paramètre
+optionnel `on_progress` de `make_scp_progress_logger` (mêmes paliers, une exception du
+callback est journalisée sans interrompre le transfert) ; les deux threads publient le palier
+dans `SharedState.scp_progress` (`ScpProgress`, tuple immuable, affectation atomique) et la page
+« Journal » l'ajoute à la ligne de la capture à chaque rafraîchissement (1 s, thread GTK) via
+`format_scp_progress` — ex. « SCP cap_00003.pcap : 40 % (4.0 Mo / 10.0 Mo) ». Côté CLI, `-v`
+(niveau DEBUG) affiche déjà chaque palier : rien à ajouter. Voir
+[session 65](sessions/session-65.md).
 
 **Bug trouvé par les tests écrits pour ce point** : la première version journalisait une ligne
 « 0% » parasite avant le premier palier (`0 > -1` sur le palier initial). Corrigé, détail dans

@@ -262,11 +262,14 @@ seul à traiter à la fois) :
    `scp_put` + `make_scp_progress_logger()` (journalisation par paliers,
    suivi par nom de fichier), câblé sur `_push_feature_file` et
    `CaptureRotationThread`. 12 nouveaux tests ; un bug de palier « 0% »
-   trouvé par ces tests et corrigé. **La remontée jusqu'à la page
-   « Journal » de la GUI n'est pas faite** : le callback journalise en
-   DEBUG via loguru, il n'alimente aucun widget GTK — à traiter
-   séparément si le besoin se confirme. Voir
-   `docs/sessions/session-60.md`.
+   trouvé par ces tests et corrigé. **✅ Remontée jusqu'à la page
+   « Journal » faite en session 65 (issue #70)** : `on_progress` de
+   `make_scp_progress_logger` publie chaque palier dans
+   `SharedState.scp_progress` (`ScpProgress`), affiché par
+   `_refresh_journal` (`format_scp_progress`) sur le thread GTK — aucun
+   appel GTK depuis le thread de transfert. Côté CLI, `-v` affichait déjà
+   les paliers DEBUG. Voir `docs/sessions/session-60.md` et
+   `docs/sessions/session-65.md`.
 7. **(Session 56, audit Context7)** ~~Keepalive netmiko (paramètre
    `keepalive` du profil `hp_comware`, absent du dict `device` de
    `connect_switch()`) sur la connexion de polling longue durée
