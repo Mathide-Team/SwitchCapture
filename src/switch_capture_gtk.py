@@ -109,6 +109,7 @@ from switch_capture_core import (
     delete_ssh_password_from_keepass,
     delete_ssh_password_from_keyring,
     format_inspect_report,
+    format_scp_progress,
     format_transfer_rate,
     inspect_switch,
     list_capture_templates,
@@ -2425,6 +2426,12 @@ class CaptureWindow(Gtk.ApplicationWindow):
                     f"{session.state.files_merged} fichier(s), {format_size(session.state.bytes_merged)}"
                     f" — {format_transfer_rate(rate)}"
                 )
+            # Issue #70 : dernier palier SCP publié par le thread de
+            # transfert dans l'état partagé ; lu ici, sur le thread GTK, à
+            # chaque rafraîchissement (1 s) — aucun appel GTK hors thread.
+            scp_text = format_scp_progress(session.state.scp_progress)
+            if scp_text:
+                detail = f"{detail} — {scp_text}"
             state_text = _("en cours") if still_running else _("arrêtée")
             row_box.append(Gtk.Label(label=f"{state_text} — {detail}", xalign=1))
             row = Gtk.ListBoxRow()
