@@ -48,7 +48,8 @@ propre de la configuration poussée. Détail : `docs/architecture.md`.
 - Couverture (`coverage.py`) : `switch_capture_cli.py` 99 % (**1062-1063
   seules restantes**, ex-998-999 avant reformatage — ligne `__main__`
   couverte depuis la session 55, détail : `docs/sessions/session-55.md`),
-  `switch_capture_core.py` **84 %** (234 lignes, 80→84 % en session 62 —
+  `switch_capture_core.py` **88 %** (177 lignes, 84→88 % en session 64,
+  lot mirroring de l'issue #68 ; 80→84 % en session 62 —
   triage complet des lignes restantes par fonction dans
   `docs/sessions/session-62.md`), `switch_capture_gtk.py` 10 % (attendu —
   code GTK4, non couvert par la suite pytest par construction, voir
@@ -182,20 +183,19 @@ seul à traiter à la fois) :
 3. Relecture linguistique du `.po` en_US par une personne anglophone
    native — tâche non automatisable, en attente depuis la session 33.
 4. Poursuivre l'audit de couverture (session 51-52-53-54-58-61-62) sur les
-   lignes restantes de `switch_capture_core.py` (**84 %, 234 lignes non
-   couvertes**). Le **triage par fonction**, jamais fait avant la session
+   lignes restantes de `switch_capture_core.py` (**88 %, 177 lignes non
+   couvertes** depuis la session 64). Le **triage par fonction**, jamais fait avant la session
    62, est désormais disponible dans `docs/sessions/session-62.md` :
    tableau ligne/fonction complet et regroupement en 3 familles par coût
    de test. À reprendre par là plutôt que par la liste de plages brutes
    de `docs/sessions/session-54.md`, devenue périmée (numéros décalés en
    session 61, contenu couvert en session 62). Candidat naturel de
    continuation, pas bloqué par un facteur externe contrairement aux trois
-   points ci-dessus. Prochain lot conseillé par le triage : les quatre
-   fonctions de mirroring (`configure_gre_mirror` 20, `MirrorThread.run`
-   15, `teardown_mirror` 13, `configure_local_mirror` 8 = 56 lignes) —
-   même famille « séquence de commandes switch » que le bloc traité en
-   session 62, donc même outillage `FakeConn` et même rapport
-   valeur/effort. Trois sous-pistes précises traitées, aucune encore
+   points ci-dessus. Lot mirroring (`configure_gre_mirror`,
+   `MirrorThread.run`, `teardown_mirror`, `configure_local_mirror`)
+   **traité en session 64** (issue #68, `tests/test_mirror_port_sequences.py`,
+   plus aucune ligne non couverte dans ces quatre fonctions) : reprendre
+   par les familles suivantes du triage de la session 62. Trois sous-pistes précises traitées, aucune encore
    ouverte :
    - ~~Les imports optionnels en tête de fichier (`netmiko`/`paramiko`/
      `keyring`/`pykeepass`, lignes 33-59)~~ **✅ Fait (session 58,
