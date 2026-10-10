@@ -18,7 +18,8 @@
   [session 61](sessions/session-61.md).
 - Couverture (`coverage.py`) : `switch_capture_cli.py` 99 % (**1062-1063 seules lignes
   restantes**, ex-998-999, voir [session 55](sessions/session-55.md)),
-  `switch_capture_core.py` **84 %** (234 lignes, 80→84 % en
+  `switch_capture_core.py` **88 %** (177 lignes, 84→88 % en
+  [session 64](sessions/session-64.md), lot mirroring ; 80→84 % en
   [session 62](sessions/session-62.md)), `switch_capture_gtk.py`
   10 % (attendu, voir section « Tests automatisés (pytest) » plus bas). **Triage par
   fonction** des lignes restantes de `switch_capture_core.py` :
