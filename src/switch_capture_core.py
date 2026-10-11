@@ -1710,6 +1710,34 @@ def format_transfer_rate(bytes_per_second: float | None) -> str:
     return f"{value / 1024**3:.1f} Go/s"
 
 
+@dataclass(frozen=True)
+class ScpProgress:
+    """Palier de progression d'un transfert SCP (issue #70)."""
+
+    context: str
+    name: str
+    percent: int
+    sent: int
+    size: int
+
+
+def _format_bytes(num_bytes: int) -> str:
+    """Taille lisible, mêmes paliers que `format_transfer_rate` (sans « /s »)."""
+    return format_transfer_rate(num_bytes).removesuffix("/s")
+
+
+def format_scp_progress(progress: ScpProgress | None) -> str:
+    """Texte de la page « Journal » pour un palier SCP (vide sans palier).
+
+    Exemple : ``"SCP cap_00003.pcap : 40 % (4.0 Mo / 10.0 Mo)"``.
+    """
+    if progress is None:
+        return ""
+    return (
+        f"SCP {progress.name} : {progress.percent} % ({_format_bytes(progress.sent)} / {_format_bytes(progress.size)})"
+    )
+
+
 @dataclass
 class SharedState:
     """État partagé entre les threads de préparation/capture et de rotation."""
@@ -1730,6 +1758,13 @@ class SharedState:
     bytes_merged: int = 0
     last_activity: float | None = None
     last_file_name: str | None = None
+    # Dernier palier de progression SCP atteint (issue #70) : rapatriement
+    # d'un fichier de rotation ou envoi de la feature. Remplacé d'un bloc
+    # (un tuple immuable, affectation atomique sous le GIL) par le callback
+    # de `make_scp_progress_logger(on_progress=...)`, lu par la page
+    # « Journal » à chaque rafraîchissement — jamais d'appel GTK depuis le
+    # thread de transfert. None tant qu'aucun palier n'est atteint.
+    scp_progress: ScpProgress | None = None
 
     # NTP : renseigné par _ensure_ntp(), consultable par l'UI et écrit dans
     # le sidecar de métadonnées (write_capture_metadata) — important pour
@@ -2143,7 +2178,11 @@ def scp_put(
         scp_client.put(str(local_path), remote_path)
 
 
-def make_scp_progress_logger(context: str, threshold_percent: int = 10) -> Callable[[bytes, int, int], None]:
+def make_scp_progress_logger(
+    context: str,
+    threshold_percent: int = 10,
+    on_progress: Callable[[ScpProgress], None] | None = None,
+) -> Callable[[bytes, int, int], None]:
     """Construit un callback de progression SCP prêt pour `scp_get`/`scp_put`.
 
     Le paquet `scp` appelle son callback `progress(filename, size, sent)` à
@@ -2199,6 +2238,11 @@ def make_scp_progress_logger(context: str, threshold_percent: int = 10) -> Calla
             sent=sent,
             size=size,
         )
+        if on_progress is not None:
+            try:
+                on_progress(ScpProgress(context=context, name=name, percent=threshold, sent=sent, size=size))
+            except Exception:  # noqa: BLE001 -- l'affichage ne doit jamais casser le transfert
+                logger.exception("{context} | callback de progression en échec", context=context)
 
     return _progress
 
@@ -2599,6 +2643,10 @@ class SetupAndCaptureThread(threading.Thread):
         """Indique si `path` est un point de montage actif."""
         return subprocess.run(["mountpoint", "-q", str(path)], check=False).returncode == 0
 
+    def _record_scp_progress(self, progress: ScpProgress) -> None:
+        """Publie le palier SCP dans l'état partagé (page « Journal », issue #70)."""
+        self.state.scp_progress = progress
+
     def _push_feature_file(self) -> None:
         """Pousse le .bin de la feature sur la flash, sauf si déjà installée.
 
@@ -2625,7 +2673,12 @@ class SetupAndCaptureThread(threading.Thread):
         logger.info("push_feature_file | (scp) {src} -> {dst}", src=src, dst=remote_path)
         ssh_client = open_scp_ssh_client(self.cfg)
         try:
-            scp_put(ssh_client, src, remote_path, progress_callback=make_scp_progress_logger("push_feature_file"))
+            scp_put(
+                ssh_client,
+                src,
+                remote_path,
+                progress_callback=make_scp_progress_logger("push_feature_file", on_progress=self._record_scp_progress),
+            )
         finally:
             ssh_client.close()
 
@@ -2790,7 +2843,13 @@ class CaptureRotationThread(threading.Thread):
         # rapatrié par ce thread (voir make_scp_progress_logger : les
         # paliers loggués sont suivis par nom de fichier, donc son état
         # interne reste correct d'un fichier à l'autre sans recréation).
-        self._scp_progress_logger = make_scp_progress_logger("process_closed_file_scp")
+        self._scp_progress_logger = make_scp_progress_logger(
+            "process_closed_file_scp", on_progress=self._record_scp_progress
+        )
+
+    def _record_scp_progress(self, progress: ScpProgress) -> None:
+        """Publie le palier SCP dans l'état partagé (page « Journal », issue #70)."""
+        self.state.scp_progress = progress
 
     def run(self) -> None:
         """Point d'entrée du thread : attend la capture, puis poll en boucle."""

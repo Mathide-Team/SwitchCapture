@@ -18,7 +18,8 @@
   [session 61](sessions/session-61.md).
 - Couverture (`coverage.py`) : `switch_capture_cli.py` 99 % (**1062-1063 seules lignes
   restantes**, ex-998-999, voir [session 55](sessions/session-55.md)),
-  `switch_capture_core.py` **84 %** (234 lignes, 80→84 % en
+  `switch_capture_core.py` **88 %** (177 lignes, 84→88 % en
+  [session 64](sessions/session-64.md), lot mirroring ; 80→84 % en
   [session 62](sessions/session-62.md)), `switch_capture_gtk.py`
   10 % (attendu, voir section « Tests automatisés (pytest) » plus bas). **Triage par
   fonction** des lignes restantes de `switch_capture_core.py` :
@@ -143,10 +144,14 @@ sans mélanger leurs paliers). `filename` accepté en `bytes` ou `str` selon la 
 (`_push_feature_file`, et un callback unique par `CaptureRotationThread`). 12 nouveaux tests
 dans `test_scp_transfer.py` (plutôt qu'un nouveau fichier : les faux backends SCP y sont déjà).
 
-**Non fait, délibérément** : la remontée **jusqu'à la page « Journal » de la GUI** et au CLI
-verbeux, pourtant au cœur de la proposition d'origine. Le callback journalise en DEBUG via
-loguru ; il n'alimente aucun widget GTK. À traiter séparément si le besoin se confirme — ne pas
-lire ce point comme entièrement clos.
+**Remontée GUI et CLI (session 65, issue #70)** : ~~non fait, délibérément~~. Paramètre
+optionnel `on_progress` de `make_scp_progress_logger` (mêmes paliers, une exception du
+callback est journalisée sans interrompre le transfert) ; les deux threads publient le palier
+dans `SharedState.scp_progress` (`ScpProgress`, tuple immuable, affectation atomique) et la page
+« Journal » l'ajoute à la ligne de la capture à chaque rafraîchissement (1 s, thread GTK) via
+`format_scp_progress` — ex. « SCP cap_00003.pcap : 40 % (4.0 Mo / 10.0 Mo) ». Côté CLI, `-v`
+(niveau DEBUG) affiche déjà chaque palier : rien à ajouter. Voir
+[session 65](sessions/session-65.md).
 
 **Bug trouvé par les tests écrits pour ce point** : la première version journalisait une ligne
 « 0% » parasite avant le premier palier (`0 > -1` sur le palier initial). Corrigé, détail dans
@@ -217,6 +222,17 @@ version GTK4 réellement disponible sur les cibles de packaging actuelles (Debia
 — paquet système `gtk4`, voir `packaging-rpm/switch-capture.spec`) avant de s'engager sur la
 nouvelle API asynchrone, même principe que la vérification d'alias 5510/5520 ci-dessus (ne
 jamais deviner sans preuve).
+
+**Fait (issue #69, 11/10/2026)** : versions relevées sur packages.debian.org et le dépôt
+AppStream de Rocky 9 : Debian 12 « bookworm » 4.8.3, Debian 13 « trixie » 4.18.6, Rocky/RHEL 9
+4.12.3. Debian 12 restant < 4.10, `switch_capture_gtk.py` choisit l'API à l'exécution
+(`_HAS_FILE_DIALOG`/`_HAS_ALERT_DIALOG`, introspection) : `_choose_path` (2 sélecteurs) et
+`_show_message` (`_show_dialog`) utilisent `Gtk.FileDialog`/`Gtk.AlertDialog` sur GTK >= 4.10
+et l'ancienne API sinon. `Gtk.AlertDialog` n'accepte aucun widget : les 3 confirmations qui en
+portent (désinstallation avec IP à retaper, enregistrement et import de modèle) passent par
+`_open_form_dialog`, une `Gtk.Window` modale non dépréciée (Annuler, Échap et fermeture =
+refus, réponse unique). Validation : `tests/test_gui_dialogs.py` (21 tests sous Xvfb, GTK 4.22,
+dont le repli forcé), sautés sans PyGObject comme les autres `test_gui_*`.
 
 **Tests prévus** : pas de nouveau fichier `tests/` pytest (comportement GTK4 hors périmètre,
 comme le reste de la GUI) — mise à jour des scripts ad hoc Xvfb existants qui valident déjà les

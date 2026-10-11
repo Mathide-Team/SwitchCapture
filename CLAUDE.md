@@ -48,7 +48,8 @@ propre de la configuration poussée. Détail : `docs/architecture.md`.
 - Couverture (`coverage.py`) : `switch_capture_cli.py` 99 % (**1062-1063
   seules restantes**, ex-998-999 avant reformatage — ligne `__main__`
   couverte depuis la session 55, détail : `docs/sessions/session-55.md`),
-  `switch_capture_core.py` **84 %** (234 lignes, 80→84 % en session 62 —
+  `switch_capture_core.py` **88 %** (177 lignes, 84→88 % en session 64,
+  lot mirroring de l'issue #68 ; 80→84 % en session 62 —
   triage complet des lignes restantes par fonction dans
   `docs/sessions/session-62.md`), `switch_capture_gtk.py` 10 % (attendu —
   code GTK4, non couvert par la suite pytest par construction, voir
@@ -182,20 +183,19 @@ seul à traiter à la fois) :
 3. Relecture linguistique du `.po` en_US par une personne anglophone
    native — tâche non automatisable, en attente depuis la session 33.
 4. Poursuivre l'audit de couverture (session 51-52-53-54-58-61-62) sur les
-   lignes restantes de `switch_capture_core.py` (**84 %, 234 lignes non
-   couvertes**). Le **triage par fonction**, jamais fait avant la session
+   lignes restantes de `switch_capture_core.py` (**88 %, 177 lignes non
+   couvertes** depuis la session 64). Le **triage par fonction**, jamais fait avant la session
    62, est désormais disponible dans `docs/sessions/session-62.md` :
    tableau ligne/fonction complet et regroupement en 3 familles par coût
    de test. À reprendre par là plutôt que par la liste de plages brutes
    de `docs/sessions/session-54.md`, devenue périmée (numéros décalés en
    session 61, contenu couvert en session 62). Candidat naturel de
    continuation, pas bloqué par un facteur externe contrairement aux trois
-   points ci-dessus. Prochain lot conseillé par le triage : les quatre
-   fonctions de mirroring (`configure_gre_mirror` 20, `MirrorThread.run`
-   15, `teardown_mirror` 13, `configure_local_mirror` 8 = 56 lignes) —
-   même famille « séquence de commandes switch » que le bloc traité en
-   session 62, donc même outillage `FakeConn` et même rapport
-   valeur/effort. Trois sous-pistes précises traitées, aucune encore
+   points ci-dessus. Lot mirroring (`configure_gre_mirror`,
+   `MirrorThread.run`, `teardown_mirror`, `configure_local_mirror`)
+   **traité en session 64** (issue #68, `tests/test_mirror_port_sequences.py`,
+   plus aucune ligne non couverte dans ces quatre fonctions) : reprendre
+   par les familles suivantes du triage de la session 62. Trois sous-pistes précises traitées, aucune encore
    ouverte :
    - ~~Les imports optionnels en tête de fichier (`netmiko`/`paramiko`/
      `keyring`/`pykeepass`, lignes 33-59)~~ **✅ Fait (session 58,
@@ -262,11 +262,14 @@ seul à traiter à la fois) :
    `scp_put` + `make_scp_progress_logger()` (journalisation par paliers,
    suivi par nom de fichier), câblé sur `_push_feature_file` et
    `CaptureRotationThread`. 12 nouveaux tests ; un bug de palier « 0% »
-   trouvé par ces tests et corrigé. **La remontée jusqu'à la page
-   « Journal » de la GUI n'est pas faite** : le callback journalise en
-   DEBUG via loguru, il n'alimente aucun widget GTK — à traiter
-   séparément si le besoin se confirme. Voir
-   `docs/sessions/session-60.md`.
+   trouvé par ces tests et corrigé. **✅ Remontée jusqu'à la page
+   « Journal » faite en session 65 (issue #70)** : `on_progress` de
+   `make_scp_progress_logger` publie chaque palier dans
+   `SharedState.scp_progress` (`ScpProgress`), affiché par
+   `_refresh_journal` (`format_scp_progress`) sur le thread GTK — aucun
+   appel GTK depuis le thread de transfert. Côté CLI, `-v` affichait déjà
+   les paliers DEBUG. Voir `docs/sessions/session-60.md` et
+   `docs/sessions/session-65.md`.
 7. **(Session 56, audit Context7)** ~~Keepalive netmiko (paramètre
    `keepalive` du profil `hp_comware`, absent du dict `device` de
    `connect_switch()`) sur la connexion de polling longue durée
@@ -286,14 +289,16 @@ seul à traiter à la fois) :
    `inspect`, fil de transmission complet) étendus, 13 nouveaux tests.
    GUI volontairement pas étendue (scope cœur + CLI cette session) —
    voir `docs/sessions/session-59.md`.
-9. **(Session 56, audit Context7)** Migration `Gtk.FileChooserNative`/
-   `Gtk.MessageDialog` (dépréciés depuis GTK 4.10) vers `Gtk.FileDialog`/
-   `Gtk.AlertDialog` (API asynchrone). Plus gros chantier que les points
-   5 à 8 (6 sites d'appel dans `switch_capture_gtk.py` + scripts Xvfb
-   associés) et à ne pas traiter à l'aveugle : vérifier d'abord la
-   version GTK4 réellement disponible sur les cibles de packaging
-   actuelles (Debian, Rocky/RHEL 9) avant de s'engager sur la nouvelle
-   API, même principe que la vérification d'alias 5510/5520 (point 2).
+9. **(Session 56, audit Context7)** ~~Migration `Gtk.FileChooserNative`/
+   `Gtk.MessageDialog` vers `Gtk.FileDialog`/`Gtk.AlertDialog`~~ : fait
+   (issue #69). Versions relevées le 11/10/2026 : Debian 12 GTK 4.8.3,
+   Debian 13 4.18.6, Rocky/RHEL 9 4.12.3. Debian 12 étant < 4.10, la
+   nouvelle API est choisie à l'exécution (`_HAS_FILE_DIALOG`,
+   `_HAS_ALERT_DIALOG`) avec repli sur l'ancienne ; les 3 confirmations
+   à widgets (IP à retaper, nom de modèle, liste de modèles) passent par
+   `_open_form_dialog`, une `Gtk.Window` modale non dépréciée.
+   Tests : `tests/test_gui_dialogs.py` (21 tests, Xvfb, sautés sans
+   PyGObject comme les autres `test_gui_*`).
 
 ## Commandes de qualité
 
