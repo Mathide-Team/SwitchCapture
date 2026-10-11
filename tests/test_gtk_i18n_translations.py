@@ -108,45 +108,51 @@ class _StubClass(metaclass=_StubMeta):
         pass
 
 
-def _install_gi_stub() -> None:
+def _install_gi_stub(monkeypatch) -> None:
+    """Installe le faux `gi` le temps d'un test seulement.
+
+    `monkeypatch.setitem` restaure les vrais modules à la fin du test :
+    écrire directement dans `sys.modules` laissait le faux `gi` en place
+    pour tout le reste de la session, et cassait les tests GUI exécutés
+    ensuite quand PyGObject est réellement installé
+    (« cannot import name 'events' from 'gi' »).
+    """
     gi_mock = types.ModuleType("gi")
     gi_mock.require_version = lambda *a, **k: None
     repo_mock = types.ModuleType("gi.repository")
     for name in ("Gdk", "Gio", "GLib", "Gtk", "Pango"):
         setattr(repo_mock, name, _StubClass)
     gi_mock.repository = repo_mock
-    sys.modules["gi"] = gi_mock
-    sys.modules["gi.repository"] = repo_mock
+    monkeypatch.setitem(sys.modules, "gi", gi_mock)
+    monkeypatch.setitem(sys.modules, "gi.repository", repo_mock)
 
 
 @pytest.fixture()
 def gtk_module_en(monkeypatch):
     """Importe `switch_capture_gtk` avec `gi` mocké et `en_US` forcé, indépendamment de l'environnement réel."""
-    _install_gi_stub()
+    _install_gi_stub(monkeypatch)
     real_translation = gettext.translation
 
     def _patched(domain, localedir=None, languages=None, fallback=False):
         return real_translation(domain, localedir=localedir, languages=["en_US"], fallback=fallback)
 
     monkeypatch.setattr(gettext, "translation", _patched)
-    sys.modules.pop("switch_capture_gtk", None)
+    monkeypatch.delitem(sys.modules, "switch_capture_gtk", raising=False)
     import switch_capture_gtk as module
 
     yield module
-    sys.modules.pop("switch_capture_gtk", None)
 
 
 @pytest.fixture()
 def gtk_module_default(monkeypatch):
     """Importe `switch_capture_gtk` avec `gi` mocké, sans variable de langue forcée (repli français attendu)."""
-    _install_gi_stub()
+    _install_gi_stub(monkeypatch)
     for var in ("LANGUAGE", "LC_ALL", "LC_MESSAGES", "LANG"):
         monkeypatch.delenv(var, raising=False)
-    sys.modules.pop("switch_capture_gtk", None)
+    monkeypatch.delitem(sys.modules, "switch_capture_gtk", raising=False)
     import switch_capture_gtk as module
 
     yield module
-    sys.modules.pop("switch_capture_gtk", None)
 
 
 # --------------------------------------------------------------------- #
