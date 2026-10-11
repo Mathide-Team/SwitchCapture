@@ -289,14 +289,16 @@ seul à traiter à la fois) :
    `inspect`, fil de transmission complet) étendus, 13 nouveaux tests.
    GUI volontairement pas étendue (scope cœur + CLI cette session) —
    voir `docs/sessions/session-59.md`.
-9. **(Session 56, audit Context7)** Migration `Gtk.FileChooserNative`/
-   `Gtk.MessageDialog` (dépréciés depuis GTK 4.10) vers `Gtk.FileDialog`/
-   `Gtk.AlertDialog` (API asynchrone). Plus gros chantier que les points
-   5 à 8 (6 sites d'appel dans `switch_capture_gtk.py` + scripts Xvfb
-   associés) et à ne pas traiter à l'aveugle : vérifier d'abord la
-   version GTK4 réellement disponible sur les cibles de packaging
-   actuelles (Debian, Rocky/RHEL 9) avant de s'engager sur la nouvelle
-   API, même principe que la vérification d'alias 5510/5520 (point 2).
+9. **(Session 56, audit Context7)** ~~Migration `Gtk.FileChooserNative`/
+   `Gtk.MessageDialog` vers `Gtk.FileDialog`/`Gtk.AlertDialog`~~ : fait
+   (issue #69). Versions relevées le 11/10/2026 : Debian 12 GTK 4.8.3,
+   Debian 13 4.18.6, Rocky/RHEL 9 4.12.3. Debian 12 étant < 4.10, la
+   nouvelle API est choisie à l'exécution (`_HAS_FILE_DIALOG`,
+   `_HAS_ALERT_DIALOG`) avec repli sur l'ancienne ; les 3 confirmations
+   à widgets (IP à retaper, nom de modèle, liste de modèles) passent par
+   `_open_form_dialog`, une `Gtk.Window` modale non dépréciée.
+   Tests : `tests/test_gui_dialogs.py` (21 tests, Xvfb, sautés sans
+   PyGObject comme les autres `test_gui_*`).
 
 ## Commandes de qualité
 

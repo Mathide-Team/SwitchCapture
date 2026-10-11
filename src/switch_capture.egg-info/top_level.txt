@@ -1,0 +1,7 @@
+docs
+helpers
+icons
+locale
+switch_capture_cli
+switch_capture_core
+switch_capture_gtk

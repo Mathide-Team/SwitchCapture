@@ -223,6 +223,17 @@ version GTK4 réellement disponible sur les cibles de packaging actuelles (Debia
 nouvelle API asynchrone, même principe que la vérification d'alias 5510/5520 ci-dessus (ne
 jamais deviner sans preuve).
 
+**Fait (issue #69, 11/10/2026)** : versions relevées sur packages.debian.org et le dépôt
+AppStream de Rocky 9 : Debian 12 « bookworm » 4.8.3, Debian 13 « trixie » 4.18.6, Rocky/RHEL 9
+4.12.3. Debian 12 restant < 4.10, `switch_capture_gtk.py` choisit l'API à l'exécution
+(`_HAS_FILE_DIALOG`/`_HAS_ALERT_DIALOG`, introspection) : `_choose_path` (2 sélecteurs) et
+`_show_message` (`_show_dialog`) utilisent `Gtk.FileDialog`/`Gtk.AlertDialog` sur GTK >= 4.10
+et l'ancienne API sinon. `Gtk.AlertDialog` n'accepte aucun widget : les 3 confirmations qui en
+portent (désinstallation avec IP à retaper, enregistrement et import de modèle) passent par
+`_open_form_dialog`, une `Gtk.Window` modale non dépréciée (Annuler, Échap et fermeture =
+refus, réponse unique). Validation : `tests/test_gui_dialogs.py` (21 tests sous Xvfb, GTK 4.22,
+dont le repli forcé), sautés sans PyGObject comme les autres `test_gui_*`.
+
 **Tests prévus** : pas de nouveau fichier `tests/` pytest (comportement GTK4 hors périmètre,
 comme le reste de la GUI) — mise à jour des scripts ad hoc Xvfb existants qui valident déjà les
 6 sites d'appel actuels.
