@@ -1,0 +1,5 @@
+netmiko>=4.3
+loguru>=0.7
+PyYAML>=6.0
+paramiko>=2.7
+scp>=0.14

@@ -216,6 +216,158 @@ def format_size(num_bytes: int) -> str:
     return f"{size:.1f} To"
 
 
+# ---------------------------------------------------------------------- #
+# Dialogues (issue #69)
+# ---------------------------------------------------------------------- #
+# Gtk.FileChooserNative et Gtk.MessageDialog sont dépréciés depuis GTK 4.10
+# au profit de Gtk.FileDialog / Gtk.AlertDialog (API *_async/*_finish).
+# Versions de GTK4 des cibles de packaging relevées le 11/10/2026 :
+# Debian 12 « bookworm » 4.8.3 (oldstable), Debian 13 « trixie » 4.18.6,
+# Rocky/RHEL 9 4.12.3. Debian 12 étant encore < 4.10, la nouvelle API est
+# choisie à l'exécution (introspection) avec repli sur l'ancienne :
+# l'ancienne n'est donc plus jamais appelée sur GTK >= 4.10.
+#
+# Gtk.AlertDialog n'accepte aucun widget supplémentaire. Les confirmations
+# qui en portent (IP à retaper, nom de modèle, liste de modèles) passent par
+# _open_form_dialog : une Gtk.Window modale construite à la main, non
+# dépréciée, identique sur toutes les versions de GTK4.
+_HAS_FILE_DIALOG = hasattr(Gtk, "FileDialog")
+_HAS_ALERT_DIALOG = hasattr(Gtk, "AlertDialog")
+
+
+def _choose_path(parent: Gtk.Window, title: str, select_folder: bool, on_path) -> None:
+    """Ouvre un sélecteur de fichier ou de dossier et passe le chemin local choisi à ``on_path``.
+
+    Args:
+        parent: fenêtre parente (dialogue modal).
+        title: titre du sélecteur.
+        select_folder: True pour choisir un dossier, False pour un fichier.
+        on_path: appelée avec le chemin local choisi ; jamais appelée en cas
+            d'annulation ou de fichier sans chemin local.
+    """
+    if _HAS_FILE_DIALOG:
+        dialog = Gtk.FileDialog(title=title, modal=True)
+
+        def on_done(dlg: Gtk.FileDialog, result: Gio.AsyncResult) -> None:
+            try:
+                gfile = dlg.select_folder_finish(result) if select_folder else dlg.open_finish(result)
+            except GLib.Error as exc:  # annulation (Gtk.DialogError.DISMISSED) ou échec
+                logger.debug("sélecteur « {} » | fermé sans choix : {}", title, exc.message)
+                return
+            path = gfile.get_path() if gfile else None
+            if path:
+                on_path(path)
+
+        if select_folder:
+            dialog.select_folder(parent, None, on_done)
+        else:
+            dialog.open(parent, None, on_done)
+        return
+
+    native = Gtk.FileChooserNative(
+        title=title,
+        action=Gtk.FileChooserAction.SELECT_FOLDER if select_folder else Gtk.FileChooserAction.OPEN,
+        transient_for=parent,
+    )
+
+    def on_response(dlg: Gtk.FileChooserNative, response: int) -> None:
+        gfile = dlg.get_file() if response == Gtk.ResponseType.ACCEPT else None
+        dlg.destroy()
+        path = gfile.get_path() if gfile else None
+        if path:
+            on_path(path)
+
+    native.connect("response", on_response)
+    native.show()
+
+
+def _show_message(parent: Gtk.Window, title: str, body: str) -> None:
+    """Affiche un message d'information modal avec un seul bouton de fermeture."""
+    if _HAS_ALERT_DIALOG:
+        Gtk.AlertDialog(message=title, detail=body, modal=True).show(parent)
+        return
+    dialog = Gtk.MessageDialog(
+        transient_for=parent,
+        modal=True,
+        message_type=Gtk.MessageType.INFO,
+        buttons=Gtk.ButtonsType.OK,
+        text=title,
+        secondary_text=body,
+    )
+    dialog.connect("response", lambda d, _r: d.destroy())
+    dialog.show()
+
+
+def _open_form_dialog(
+    parent: Gtk.Window,
+    heading: str,
+    body: str,
+    widgets: list[Gtk.Widget],
+    cancel_label: str,
+    accept_label: str,
+    on_response,
+    destructive: bool = False,
+) -> Gtk.Button:
+    """Ouvre une boîte modale portant des widgets de saisie, sans classe dépréciée.
+
+    ``on_response(accepted)`` est appelée une seule fois, avant la destruction
+    de la fenêtre (les widgets sont donc encore lisibles) : True pour le
+    bouton d'acceptation, False pour Annuler, Échap ou la fermeture.
+
+    Returns:
+        Le bouton d'acceptation, pour que l'appelant règle sa sensibilité.
+    """
+    win = Gtk.Window(transient_for=parent, modal=True, title=heading, resizable=False, default_width=420)
+    box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+    for side in ("top", "bottom", "start", "end"):
+        getattr(box, f"set_margin_{side}")(18)
+    title_label = Gtk.Label(label=heading, xalign=0, wrap=True)
+    title_label.add_css_class("title-4")
+    box.append(title_label)
+    if body:
+        box.append(Gtk.Label(label=body, xalign=0, wrap=True, max_width_chars=60))
+    for widget in widgets:
+        box.append(widget)
+    buttons = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6, halign=Gtk.Align.END, margin_top=6)
+    btn_cancel = Gtk.Button(label=cancel_label)
+    btn_accept = Gtk.Button(label=accept_label)
+    btn_accept.add_css_class("destructive-action" if destructive else "suggested-action")
+    buttons.append(btn_cancel)
+    buttons.append(btn_accept)
+    box.append(buttons)
+    win.set_child(box)
+
+    answered = False
+
+    def finish(accepted: bool) -> None:
+        nonlocal answered
+        if answered:
+            return
+        answered = True
+        try:
+            on_response(accepted)
+        finally:
+            win.destroy()
+
+    def on_close_request(_win: Gtk.Window) -> bool:
+        finish(False)
+        return True  # destroy() déjà fait par finish
+
+    btn_cancel.connect("clicked", lambda _b: finish(False))
+    btn_accept.connect("clicked", lambda _b: finish(True))
+    win.connect("close-request", on_close_request)
+    escape = Gtk.ShortcutController()
+    escape.add_shortcut(
+        Gtk.Shortcut.new(
+            Gtk.ShortcutTrigger.parse_string("Escape"),
+            Gtk.CallbackAction.new(lambda *_a: finish(False) or True),
+        )
+    )
+    win.add_controller(escape)
+    win.present()
+    return btn_accept
+
+
 class CaptureSession:
     """Une capture planifiée/en cours : sa config, son état, ses threads.
 
@@ -851,40 +1003,14 @@ class CaptureWindow(Gtk.ApplicationWindow):
         return box
 
     def _on_browse(self, _button: Gtk.Button, entry: Gtk.Entry, select_folder: bool) -> None:
-        dialog = Gtk.FileChooserNative(
-            title=_("Choisir"),
-            action=Gtk.FileChooserAction.SELECT_FOLDER if select_folder else Gtk.FileChooserAction.OPEN,
-            transient_for=self,
-        )
-
-        def on_response(dlg: Gtk.FileChooserNative, response: int) -> None:
-            if response == Gtk.ResponseType.ACCEPT:
-                gfile = dlg.get_file()
-                if gfile:
-                    entry.set_text(gfile.get_path() or "")
-            dlg.destroy()
-
-        dialog.connect("response", on_response)
-        dialog.show()
+        _choose_path(self, _("Choisir"), select_folder, entry.set_text)
 
     def _on_import_bin(self, _button: Gtk.Button) -> None:
-        dialog = Gtk.FileChooserNative(
-            title=_("Choisir le dossier .bin à importer"),
-            action=Gtk.FileChooserAction.SELECT_FOLDER,
-            transient_for=self,
-        )
+        def on_path(source_dir: str) -> None:
+            target_dir = self._entries["feature_bin_dir"].get_text().strip() or None
+            self._run_import_bin_async(source_dir, target_dir)
 
-        def on_response(dlg: Gtk.FileChooserNative, response: int) -> None:
-            if response == Gtk.ResponseType.ACCEPT:
-                gfile = dlg.get_file()
-                source_dir = gfile.get_path() if gfile else None
-                if source_dir:
-                    target_dir = self._entries["feature_bin_dir"].get_text().strip() or None
-                    self._run_import_bin_async(source_dir, target_dir)
-            dlg.destroy()
-
-        dialog.connect("response", on_response)
-        dialog.show()
+        _choose_path(self, _("Choisir le dossier .bin à importer"), True, on_path)
 
     def _run_import_bin_async(self, source_dir: str, target_dir: str | None) -> None:
         def worker() -> None:
@@ -1791,36 +1917,13 @@ class CaptureWindow(Gtk.ApplicationWindow):
         threading.Thread(target=worker, daemon=True, name=f"inspect-{session.id}").start()
 
     def _on_uninstall_session(self, _button: Gtk.Button, session: CaptureSession) -> None:
-        confirm = Gtk.MessageDialog(
-            transient_for=self,
-            modal=True,
-            message_type=Gtk.MessageType.WARNING,
-            buttons=Gtk.ButtonsType.NONE,
-            text=f"Désinstaller packet-capture sur {session.cfg.switch_ip} ?",
-            secondary_text=(
-                f"Slot {session.cfg.slot}. Sans lien avec la suppression de cette capture "
-                "de la liste ci-dessus.\n"
-                f"Pour confirmer, retapez l'IP du switch ({session.cfg.switch_ip}) ci-dessous."
-            ),
-        )
-        confirm.add_button(_("Annuler"), Gtk.ResponseType.CANCEL)
         chk_remove_bin = Gtk.CheckButton(label=_("supprimer aussi le .bin de la flash"))
-        confirm.get_message_area().append(chk_remove_bin)
         entry_confirm_ip = Gtk.Entry(placeholder_text=session.cfg.switch_ip, hexpand=True)
-        confirm.get_message_area().append(entry_confirm_ip)
-        btn_uninstall = confirm.add_button(_("Désinstaller"), Gtk.ResponseType.OK)
-        btn_uninstall.set_sensitive(False)
 
-        def _on_confirm_ip_changed(entry: Gtk.Entry) -> None:
-            btn_uninstall.set_sensitive(confirm_ip_matches(entry.get_text(), session.cfg.switch_ip))
-
-        entry_confirm_ip.connect("changed", _on_confirm_ip_changed)
-
-        def on_response(dlg: Gtk.MessageDialog, response: int) -> None:
+        def on_response(accepted: bool) -> None:
             remove_bin = chk_remove_bin.get_active()
             ip_confirmed = confirm_ip_matches(entry_confirm_ip.get_text(), session.cfg.switch_ip)
-            dlg.destroy()
-            if response != Gtk.ResponseType.OK or not ip_confirmed:
+            if not accepted or not ip_confirmed:
                 return
 
             def on_done(success: bool, message: str) -> None:
@@ -1836,8 +1939,26 @@ class CaptureWindow(Gtk.ApplicationWindow):
             thread.start()
             self._set_journal_status(f"Désinstallation en cours pour {session.label} ...")
 
-        confirm.connect("response", on_response)
-        confirm.show()
+        btn_uninstall = _open_form_dialog(
+            self,
+            f"Désinstaller packet-capture sur {session.cfg.switch_ip} ?",
+            (
+                f"Slot {session.cfg.slot}. Sans lien avec la suppression de cette capture "
+                "de la liste ci-dessus.\n"
+                f"Pour confirmer, retapez l'IP du switch ({session.cfg.switch_ip}) ci-dessous."
+            ),
+            [chk_remove_bin, entry_confirm_ip],
+            _("Annuler"),
+            _("Désinstaller"),
+            on_response,
+            destructive=True,
+        )
+        btn_uninstall.set_sensitive(False)
+
+        def _on_confirm_ip_changed(entry: Gtk.Entry) -> None:
+            btn_uninstall.set_sensitive(confirm_ip_matches(entry.get_text(), session.cfg.switch_ip))
+
+        entry_confirm_ip.connect("changed", _on_confirm_ip_changed)
 
     # ------------------------------------------------------------------ #
     # Lecture du formulaire -> Config
@@ -2043,23 +2164,11 @@ class CaptureWindow(Gtk.ApplicationWindow):
         self._apply_output_mode_visibility()
 
     def _on_save_template(self, _button: Gtk.Button) -> None:
-        dialog = Gtk.MessageDialog(
-            transient_for=self,
-            modal=True,
-            message_type=Gtk.MessageType.QUESTION,
-            buttons=Gtk.ButtonsType.NONE,
-            text=_("Enregistrer comme modèle"),
-            secondary_text=_("Nom du modèle (le mot de passe SSH n'est jamais enregistré) :"),
-        )
-        dialog.add_button(_("Annuler"), Gtk.ResponseType.CANCEL)
-        dialog.add_button(_("Enregistrer"), Gtk.ResponseType.OK)
         name_entry = Gtk.Entry(placeholder_text=_("ex: labo-5130-client"))
-        dialog.get_message_area().append(name_entry)
 
-        def on_response(dlg: Gtk.MessageDialog, response: int) -> None:
+        def on_response(accepted: bool) -> None:
             name = name_entry.get_text()
-            dlg.destroy()
-            if response != Gtk.ResponseType.OK:
+            if not accepted:
                 return
             try:
                 values = self._collect_raw_form_values()
@@ -2069,8 +2178,15 @@ class CaptureWindow(Gtk.ApplicationWindow):
                 return
             self._set_journal_status(f"Modèle enregistré : {target}")
 
-        dialog.connect("response", on_response)
-        dialog.show()
+        _open_form_dialog(
+            self,
+            _("Enregistrer comme modèle"),
+            _("Nom du modèle (le mot de passe SSH n'est jamais enregistré) :"),
+            [name_entry],
+            _("Annuler"),
+            _("Enregistrer"),
+            on_response,
+        )
 
     def _on_load_template(self, _button: Gtk.Button) -> None:
         names = list_capture_templates(DEFAULT_MODELS_DIR)
@@ -2083,23 +2199,11 @@ class CaptureWindow(Gtk.ApplicationWindow):
             )
             return
 
-        dialog = Gtk.MessageDialog(
-            transient_for=self,
-            modal=True,
-            message_type=Gtk.MessageType.QUESTION,
-            buttons=Gtk.ButtonsType.NONE,
-            text=_("Importer un modèle"),
-            secondary_text=_("Le mot de passe SSH n'est jamais enregistré : ressaisissez-le après l'import."),
-        )
-        dialog.add_button(_("Annuler"), Gtk.ResponseType.CANCEL)
-        dialog.add_button(_("Importer"), Gtk.ResponseType.OK)
         dropdown = Gtk.DropDown.new_from_strings(names)
-        dialog.get_message_area().append(dropdown)
 
-        def on_response(dlg: Gtk.MessageDialog, response: int) -> None:
+        def on_response(accepted: bool) -> None:
             idx = dropdown.get_selected()
-            dlg.destroy()
-            if response != Gtk.ResponseType.OK:
+            if not accepted:
                 return
             name = names[idx]
             try:
@@ -2111,8 +2215,15 @@ class CaptureWindow(Gtk.ApplicationWindow):
             self._apply_form_values(data)
             self._set_journal_status(f"Modèle « {name} » importé dans le formulaire.")
 
-        dialog.connect("response", on_response)
-        dialog.show()
+        _open_form_dialog(
+            self,
+            _("Importer un modèle"),
+            _("Le mot de passe SSH n'est jamais enregistré : ressaisissez-le après l'import."),
+            [dropdown],
+            _("Annuler"),
+            _("Importer"),
+            on_response,
+        )
 
     # ------------------------------------------------------------------ #
     # Page 2 : Installation (préalable obligatoire à toute capture)
@@ -2553,16 +2664,7 @@ class CaptureWindow(Gtk.ApplicationWindow):
         return False
 
     def _show_dialog(self, title: str, body: str) -> None:
-        dialog = Gtk.MessageDialog(
-            transient_for=self,
-            modal=True,
-            message_type=Gtk.MessageType.INFO,
-            buttons=Gtk.ButtonsType.OK,
-            text=title,
-            secondary_text=body,
-        )
-        dialog.connect("response", lambda d, r: d.destroy())
-        dialog.show()
+        _show_message(self, title, body)
 
     def _drain_log_queue(self) -> bool:
         """Vide LOG_QUEUE dans la console de logs (appelé périodiquement par GLib).
