@@ -8,8 +8,60 @@ name: CI
   workflow_dispatch:
 
 jobs:
+  gtk:
+    # Issue #86 : suite complète AVEC l'interface GTK4, sous Xvfb (les tests
+    # test_gui_* se sautent sur le runner maison, sans PyGObject). Sa mesure
+    # de couverture est combinée à celle du job Qualité, qui applique le seuil.
+    name: Tests GTK4 (Xvfb, couverture)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout du dépôt
+        uses: actions/checkout@v7
+
+      - name: Dépendances système (GTK4, introspection, Xvfb, D-Bus, GVfs)
+        # libgirepository-2.0-dev + libcairo2-dev + pkg-config : compilation
+        # de PyGObject/pycairo dans le venv ; gvfs + dbus : reproduction réelle
+        # de tests/test_gvfs_env_workaround.py (sinon sauté).
+        run: |
+          sudo apt-get update
+          sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            gir1.2-gtk-4.0 libgirepository-2.0-dev libcairo2-dev pkg-config \
+            xvfb xauth dbus dbus-x11 gvfs iproute2
+
+      - name: Installation de uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          enable-cache: true
+
+      - name: Installation de Python
+        run: uv python install
+
+      - name: Installation des dépendances (dev + quality + gtk-test)
+        run: uv sync --group quality --group gtk-test
+
+      - name: Tests sous Xvfb (pytest + couverture)
+        env:
+          COVERAGE_FILE: .coverage.gtk
+        run: xvfb-run -a uv run --group quality --group gtk-test coverage run -m pytest -q -rs
+
+      - name: Publication de la mesure (artifact)
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-gtk
+          path: .coverage.gtk
+          include-hidden-files: true
+          retention-days: 7
+          if-no-files-found: error
+
   quality:
     name: Qualité (lint, format, tests)
+    # Seul check requis sur dev : il attend le job gtk pour appliquer le seuil
+    # à la mesure combinée. `!cancelled()` : il s'exécute (et échoue, faute
+    # d'artifact) même si gtk échoue — un job requis « skipped » passerait
+    # la protection de branche.
+    needs: gtk
+    if: ${{ !cancelled() }}
     runs-on: ${{ fromJSON(vars.RUNS_ON_LINUX || '{"group":"maison","labels":["self-hosted","linux"]}') }}
 
     steps:
@@ -43,12 +95,22 @@ jobs:
 
       - name: Tests (pytest + couverture)
         # Les tests GTK4 se sautent proprement si PyGObject n'est pas
-        # installé (tests/conftest.py::require_gtk4) ; `ip` (iproute2) est
-        # présent par défaut sur ubuntu-latest et installé ci-dessus sinon.
+        # installé (tests/conftest.py::require_gtk4) : ils tournent dans le
+        # job gtk. `ip` (iproute2) est installé ci-dessus si absent.
+        env:
+          COVERAGE_FILE: .coverage.qualite
         run: uv run --group quality coverage run -m pytest -q
 
-      - name: Rapport de couverture
+      - name: Mesure du job gtk
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-gtk
+
+      - name: Couverture combinée et seuil (lu dans pyproject.toml)
+        # fail_under déclaré une seule fois dans pyproject.toml ; échoue si
+        # la mesure du job gtk manque (job gtk en échec).
         run: |
+          uv run --group quality coverage combine .coverage.qualite .coverage.gtk
           uv run --group quality coverage report -m
           uv run --group quality coverage xml
 
