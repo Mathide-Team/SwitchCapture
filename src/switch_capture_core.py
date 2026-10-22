@@ -30,31 +30,35 @@ from loguru import logger
 
 try:
     from netmiko import ConnectHandler
-except ImportError:  # rendu explicite au lancement plutôt qu'à l'import
+except ImportError as exc:  # rendu explicite au lancement plutôt qu'à l'import
+    logger.debug("netmiko absent | fonctionnalité switch désactivée : {}", exc)
     ConnectHandler = None
 
 try:
     import paramiko
     from scp import SCPClient
-except ImportError:  # rendu explicite au lancement plutôt qu'à l'import
+except ImportError as exc:  # rendu explicite au lancement plutôt qu'à l'import
+    logger.debug("paramiko/scp absent | transfert SCP désactivé : {}", exc)
     paramiko = None
     SCPClient = None
 
 try:
     import keyring
     import keyring.errors
-except ImportError:  # dépendance optionnelle (Recommends, jamais Depends) — voir
+except ImportError as exc:  # dépendance optionnelle (Recommends, jamais Depends) — voir
     # section "Trousseau système" plus bas : son absence ne doit jamais empêcher
     # l'usage du reste de l'outil, seulement désactiver silencieusement la
     # mémorisation du mot de passe.
+    logger.debug("keyring absent | mémorisation du trousseau désactivée : {}", exc)
     keyring = None
 
 try:
     from pykeepass import PyKeePass
     from pykeepass.exceptions import CredentialsError
-except ImportError:  # dépendance optionnelle elle aussi (voir section "Repli KeePass"
+except ImportError as exc:  # dépendance optionnelle elle aussi (voir section "Repli KeePass"
     # plus bas) : uniquement utile si `keyring` est absent (pas de trousseau système,
     # ex. serveur headless sans Secret Service) et qu'un fichier .kdbx a été indiqué.
+    logger.debug("pykeepass absent | repli KeePass désactivé : {}", exc)
     PyKeePass = None
     CredentialsError = Exception
 
@@ -163,15 +167,14 @@ def detect_model(version_output: str) -> str | None:
     Returns:
         La clé de MODEL_PROFILES correspondante, ou None si non reconnue.
     """
+    logger.debug("detect_model() appelée | {} caractère(s) de sortie", len(version_output))
     text = version_output.upper()
-    logger.debug(text)
     for key, profile in MODEL_PROFILES.items():
         for alias in profile["aliases"]:
-            logger.debug(f"key {key} - Alias {alias.upper()}")
             if alias.upper() in text:
-                logger.debug(f"Modèle {key}")
+                logger.debug("detect_model() retourne | modèle reconnu")
                 return key
-    logger.debug("Modèle non trouvé")
+    logger.debug("detect_model() retourne | None (modèle non reconnu)")
     return None
 
 
@@ -184,9 +187,13 @@ def detect_software_version(version_output: str) -> str | None:
     Returns:
         La chaîne de release (ex: '6555P05'), ou None si non trouvée.
     """
+    logger.debug("detect_software_version() appelée")
     match = re.search(r"Release\s+(\S+)", version_output)
     if match:
-        return match.group(1).rstrip(",")
+        release = match.group(1).rstrip(",")
+        logger.debug("detect_software_version() retourne | {}", release)
+        return release
+    logger.debug("detect_software_version() retourne | None (release absente)")
     return None
 
 
@@ -206,8 +213,11 @@ def is_ntp_synchronized(status_output: str) -> bool:
         True si "Clock status: synchronized". Un simple `in` casserait ici,
         "unsynchronized" contenant la sous-chaîne "synchronized".
     """
+    logger.debug("is_ntp_synchronized() appelée")
     match = re.search(r"clock status:\s*(\w+)", status_output, re.IGNORECASE)
-    return bool(match) and match.group(1).lower() == "synchronized"
+    synchronise = bool(match) and match.group(1).lower() == "synchronized"
+    logger.debug("is_ntp_synchronized() retourne | {}", synchronise)
+    return synchronise
 
 
 def resolve_feature_bin(feature_bin_dir: str, model: str, version: str | None) -> Path | None:
@@ -226,21 +236,24 @@ def resolve_feature_bin(feature_bin_dir: str, model: str, version: str | None) -
     Returns:
         Le chemin du premier .bin trouvé, ou None si rien ne correspond.
     """
-    logger.debug(f"feature_bin_dir '{feature_bin_dir}' - model '{model}' - version '{version}' ")
+    logger.debug("resolve_feature_bin() appelée | modèle={} version={}", model, version)
     root = Path(feature_bin_dir) / model
     if not root.is_dir():
+        logger.debug("resolve_feature_bin() retourne | None (dossier modèle absent)")
         return None
 
     if version:
         versioned = root / version
-        logger.debug(f"versioned '{versioned}'  ")
         if versioned.is_dir():
             matches = sorted(versioned.glob("*packet-capture*.bin"))
             if matches:
+                logger.debug("resolve_feature_bin() retourne | {}", matches[0].name)
                 return matches[0]
 
     matches = sorted(root.glob("*packet-capture*.bin"))
-    return matches[0] if matches else None
+    trouve = matches[0] if matches else None
+    logger.debug("resolve_feature_bin() retourne | {}", trouve.name if trouve else "None")
+    return trouve
 
 
 # --------------------------------------------------------------------------- #
@@ -295,6 +308,7 @@ def _taphelper_path() -> Path | None:
         Le chemin de l'aide si trouvée ET exécutable, sinon None (l'appelant
         retombe alors sur `ip` directement, ce qui nécessite root).
     """
+    logger.debug("_taphelper_path() appelée")
     candidates = []
     env_override = os.environ.get("SWITCH_CAPTURE_TAPHELPER")
     if env_override:
@@ -303,7 +317,9 @@ def _taphelper_path() -> Path | None:
     candidates.append(Path(__file__).resolve().parent / "switch-capture-taphelper")
     for candidate in candidates:
         if candidate.is_file() and os.access(candidate, os.X_OK):
+            logger.debug("_taphelper_path() retourne | {}", candidate)
             return candidate
+    logger.debug("_taphelper_path() retourne | None (aide absente)")
     return None
 
 
@@ -317,6 +333,7 @@ def _ensure_tap_interface_via_helper(helper: Path, name: str) -> None:
     Raises:
         RuntimeError: si l'une des deux étapes (création, activation) échoue.
     """
+    logger.debug("_ensure_tap_interface_via_helper() appelée | interface={}", name)
     logger.info(
         "ensure_tap_interface | via aide privilégiée non-root ({helper}) pour {name}",
         helper=helper,
@@ -324,14 +341,25 @@ def _ensure_tap_interface_via_helper(helper: Path, name: str) -> None:
     )
     add = subprocess.run([str(helper), "add", name], capture_output=True, text=True, check=False)
     if add.returncode != 0:
+        logger.error(
+            "_ensure_tap_interface_via_helper() : création de {} impossible : {}",
+            name,
+            (add.stderr or add.stdout).strip(),
+        )
         raise RuntimeError(
             f"Aide privilégiée : impossible de créer l'interface TAP {name!r} : {(add.stderr or add.stdout).strip()}"
         )
     up = subprocess.run([str(helper), "up", name], capture_output=True, text=True, check=False)
     if up.returncode != 0:
+        logger.error(
+            "_ensure_tap_interface_via_helper() : activation de {} impossible : {}",
+            name,
+            (up.stderr or up.stdout).strip(),
+        )
         raise RuntimeError(
             f"Aide privilégiée : impossible d'activer l'interface TAP {name!r} : {(up.stderr or up.stdout).strip()}"
         )
+    logger.debug("_ensure_tap_interface_via_helper() retourne | interface {} active", name)
 
 
 def ensure_tap_interface(name: str) -> None:
@@ -351,9 +379,11 @@ def ensure_tap_interface(name: str) -> None:
             `ip`/l'aide absents, nom déjà pris par une interface d'un autre
             type...).
     """
+    logger.debug("ensure_tap_interface() appelée | interface={}", name)
     helper = None if os.geteuid() == 0 else _taphelper_path()
     if helper is not None:
         _ensure_tap_interface_via_helper(helper, name)
+        logger.debug("ensure_tap_interface() retourne | interface {} prête (aide)", name)
         return
 
     exists = (
@@ -375,6 +405,7 @@ def ensure_tap_interface(name: str) -> None:
             check=False,
         )
         if result.returncode != 0:
+            logger.error("ensure_tap_interface() : création de {} impossible : {}", name, result.stderr.strip())
             raise RuntimeError(
                 f"Impossible de créer l'interface TAP {name!r} : {result.stderr.strip()} "
                 "(droits root/CAP_NET_ADMIN requis ; réinstallez via install.sh/.deb/.rpm "
@@ -386,7 +417,9 @@ def ensure_tap_interface(name: str) -> None:
 
     result = subprocess.run(["ip", "link", "set", name, "up"], capture_output=True, text=True, check=False)
     if result.returncode != 0:
+        logger.error("ensure_tap_interface() : activation de {} impossible : {}", name, result.stderr.strip())
         raise RuntimeError(f"Impossible d'activer l'interface TAP {name!r} : {result.stderr.strip()}")
+    logger.debug("ensure_tap_interface() retourne | interface {} active", name)
 
 
 def delete_tap_interface(name: str) -> None:
@@ -400,6 +433,7 @@ def delete_tap_interface(name: str) -> None:
     Args:
         name: nom de l'interface TAP à supprimer.
     """
+    logger.debug("delete_tap_interface() appelée | interface={}", name)
     helper = None if os.geteuid() == 0 else _taphelper_path()
     if helper is not None:
         result = subprocess.run([str(helper), "del", name], capture_output=True, text=True, check=False)
@@ -418,6 +452,7 @@ def delete_tap_interface(name: str) -> None:
         )
     else:
         logger.info("delete_tap_interface | {name} supprimée", name=name)
+    logger.debug("delete_tap_interface() retourne | interface traitée")
 
 
 class TapFrameWriter:
@@ -441,10 +476,12 @@ class TapFrameWriter:
             OSError: si /dev/net/tun est inaccessible (droits, module tun
                 non chargé) ou si l'ioctl TUNSETIFF échoue.
         """
+        logger.debug("TapFrameWriter.__init__() appelée | interface={}", ifname)
         self._fd = os.open("/dev/net/tun", os.O_RDWR)
         ifr = struct.pack("16sH", ifname.encode("ascii"), IFF_TAP | IFF_NO_PI)
         fcntl.ioctl(self._fd, TUNSETIFF, ifr)
         self.ifname = ifname
+        logger.debug("TapFrameWriter.__init__() retourne | descripteur attaché")
 
     def write_frame(self, frame: bytes) -> None:
         """Injecte une trame Ethernet brute dans l'interface TAP.
@@ -453,14 +490,18 @@ class TapFrameWriter:
             frame: octets bruts de la trame (tels que stockés dans un
                 enregistrement pcap, sans l'en-tête d'enregistrement).
         """
+        logger.trace("write_frame() appelée | {} octet(s)", len(frame))
         os.write(self._fd, frame)
+        logger.trace("write_frame() retourne | trame injectée")
 
     def close(self) -> None:
         """Ferme le descripteur /dev/net/tun (l'interface reste, elle)."""
+        logger.debug("close() appelée")
         try:
             os.close(self._fd)
-        except OSError:
-            pass
+        except OSError as exc:
+            logger.debug("close() : fermeture ignorée : {}", exc)
+        logger.debug("close() retourne | descripteur traité")
 
 
 def iter_pcap_frames(pcap_file: Path, with_timestamps: bool = False):
@@ -486,12 +527,15 @@ def iter_pcap_frames(pcap_file: Path, with_timestamps: bool = False):
         ValueError: si le fichier est trop petit ou n'a pas un magic pcap
             classique reconnu.
     """
+    logger.debug("iter_pcap_frames() appelée | fichier={}", pcap_file.name)
     with open(pcap_file, "rb") as f:
         header = f.read(PCAP_GLOBAL_HEADER_LEN)
         if len(header) < PCAP_GLOBAL_HEADER_LEN:
+            logger.error("iter_pcap_frames() : {} trop petit / pcap invalide", pcap_file)
             raise ValueError(f"{pcap_file} trop petit / pcap invalide")
         magic = struct.unpack("<I", header[:4])[0]
         if magic not in PCAP_MAGICS:
+            logger.error("iter_pcap_frames() : magic pcap inattendu ({:#x})", magic)
             raise ValueError(f"{pcap_file} : magic pcap inattendu ({magic:#x}), probablement pcapng")
 
         while True:
@@ -506,6 +550,7 @@ def iter_pcap_frames(pcap_file: Path, with_timestamps: bool = False):
                 yield ts_sec + ts_usec / 1_000_000, frame
             else:
                 yield frame
+    logger.debug("iter_pcap_frames() retourne | itération terminée")
 
 
 def _pcapng_block(block_type: int, body: bytes) -> bytes:
@@ -525,9 +570,12 @@ def _pcapng_block(block_type: int, body: bytes) -> bytes:
     Returns:
         Le bloc complet, prêt à être écrit tel quel dans un fichier .pcapng.
     """
+    logger.trace("_pcapng_block() appelée | type={:#x}", block_type)
     padded_body = body + b"\x00" * (-len(body) % 4)
     total_length = 12 + len(padded_body)  # type(4) + longueur(4) + corps + longueur(4)
-    return struct.pack("<II", block_type, total_length) + padded_body + struct.pack("<I", total_length)
+    bloc = struct.pack("<II", block_type, total_length) + padded_body + struct.pack("<I", total_length)
+    logger.trace("_pcapng_block() retourne | bloc de {} octet(s)", len(bloc))
+    return bloc
 
 
 def convert_pcap_to_pcapng(pcap_path: Path, pcapng_path: Path) -> Path:
@@ -553,12 +601,15 @@ def convert_pcap_to_pcapng(pcap_path: Path, pcapng_path: Path) -> Path:
             un magic pcap classique reconnu (fichier trop petit, corrompu,
             ou déjà au format pcapng).
     """
+    logger.debug("convert_pcap_to_pcapng() appelée | {} -> {}", pcap_path.name, pcapng_path.name)
     with open(pcap_path, "rb") as f:
         header = f.read(PCAP_GLOBAL_HEADER_LEN)
     if len(header) < PCAP_GLOBAL_HEADER_LEN:
+        logger.error("convert_pcap_to_pcapng() : {} trop petit / pcap invalide", pcap_path)
         raise ValueError(f"{pcap_path} trop petit / pcap invalide")
     magic = struct.unpack("<I", header[:4])[0]
     if magic not in PCAP_MAGICS:
+        logger.error("convert_pcap_to_pcapng() : magic pcap inattendu ({:#x})", magic)
         raise ValueError(f"{pcap_path} : magic pcap inattendu ({magic:#x})")
     # Champ "network" du global header pcap classique = LinkType pcapng
     # (mêmes valeurs numériques dans les deux formats, ex: 1 = Ethernet).
@@ -592,6 +643,7 @@ def convert_pcap_to_pcapng(pcap_path: Path, pcapng_path: Path) -> Path:
         blocks.append(_pcapng_block(PCAPNG_EPB_BLOCK_TYPE, epb_body))
 
     pcapng_path.write_bytes(b"".join(blocks))
+    logger.debug("convert_pcap_to_pcapng() retourne | fichier pcapng écrit")
     return pcapng_path
 
 
@@ -618,12 +670,14 @@ def archive_capture_file(pcap_file: Path, archive_dir: Path, as_pcapng: bool = T
     Returns:
         Le chemin final du fichier archivé.
     """
+    logger.debug("archive_capture_file() appelée | pcapng={}", as_pcapng)
     archive_dir.mkdir(parents=True, exist_ok=True)
     if as_pcapng:
         pcapng_target = archive_dir / (pcap_file.stem + ".pcapng")
         try:
             convert_pcap_to_pcapng(pcap_file, pcapng_target)
             pcap_file.unlink(missing_ok=True)
+            logger.debug("archive_capture_file() retourne | {} (converti)", pcapng_target.name)
             return pcapng_target
         except (ValueError, OSError) as exc:
             logger.warning(
@@ -633,6 +687,7 @@ def archive_capture_file(pcap_file: Path, archive_dir: Path, as_pcapng: bool = T
             )
     target = archive_dir / pcap_file.name
     shutil.move(str(pcap_file), target)
+    logger.debug("archive_capture_file() retourne | {} (classique)", target.name)
     return target
 
 
@@ -663,6 +718,7 @@ def compute_pacing_delays(timestamps: list[float], max_gap_seconds: float) -> li
         deux trames consécutives (horloge switch imprécise, trames
         réordonnées) est traité comme 0, jamais négatif.
     """
+    logger.trace("compute_pacing_delays() appelée | {} horodatage(s)", len(timestamps))
     delays: list[float] = []
     previous: float | None = None
     for ts in timestamps:
@@ -674,6 +730,7 @@ def compute_pacing_delays(timestamps: list[float], max_gap_seconds: float) -> li
                 gap = 0.0
             delays.append(min(gap, max_gap_seconds))
         previous = ts
+    logger.trace("compute_pacing_delays() retourne | {} délai(s)", len(delays))
     return delays
 
 
@@ -757,18 +814,24 @@ def _percentile(sorted_values: list[float], pct: float) -> float:
     Returns:
         La valeur interpolée. 0.0 si `sorted_values` est vide.
     """
+    logger.trace("_percentile() appelée | pct={}", pct)
     if not sorted_values:
+        logger.trace("_percentile() retourne | 0.0 (vide)")
         return 0.0
     if len(sorted_values) == 1:
+        logger.trace("_percentile() retourne | valeur unique")
         return sorted_values[0]
     rank = (len(sorted_values) - 1) * (pct / 100)
     lower = math.floor(rank)
     upper = math.ceil(rank)
     if lower == upper:
+        logger.trace("_percentile() retourne | valeur directe")
         return sorted_values[int(rank)]
     lower_value = sorted_values[int(lower)] * (upper - rank)
     upper_value = sorted_values[int(upper)] * (rank - lower)
-    return lower_value + upper_value
+    interpole = lower_value + upper_value
+    logger.trace("_percentile() retourne | valeur interpolée")
+    return interpole
 
 
 DEFAULT_PACING_CANDIDATE_MAX_GAPS: tuple[float, ...] = (0.5, 1.0, 2.0, 5.0, 10.0)
@@ -801,8 +864,10 @@ def analyze_pacing_gaps(
         ValueError: fichier trop petit/magic pcap invalide (propagée par
             `iter_pcap_frames`), ou fichier ne contenant aucune trame.
     """
+    logger.debug("analyze_pacing_gaps() appelée | fichier={}", pcap_file.name)
     frames = list(iter_pcap_frames(pcap_file, with_timestamps=True))
     if not frames:
+        logger.error("analyze_pacing_gaps() : {} ne contient aucune trame", pcap_file)
         raise ValueError(f"{pcap_file} ne contient aucune trame")
 
     timestamps = [ts for ts, _ in frames]
@@ -819,7 +884,7 @@ def analyze_pacing_gaps(
             total_playback_seconds=sum(delays),
         )
 
-    return PacingGapAnalysis(
+    analyse = PacingGapAnalysis(
         frame_count=len(frames),
         capture_duration_seconds=timestamps[-1] - timestamps[0],
         gap_count=len(gaps),
@@ -831,6 +896,8 @@ def analyze_pacing_gaps(
         max_gap_seconds=sorted_gaps[-1] if sorted_gaps else 0.0,
         candidate_effects=candidate_effects,
     )
+    logger.debug("analyze_pacing_gaps() retourne | {} trame(s)", len(frames))
+    return analyse
 
 
 @dataclass
@@ -990,6 +1057,7 @@ class Config:
 
     def __post_init__(self) -> None:
         """Normalise les champs dérivés et valide les champs obligatoires."""
+        logger.debug("Config.__post_init__() appelée | {}", self.switch_ip)
         if not self.ssh_password:
             self.ssh_password = os.environ.get("SWITCH_SSH_PASSWORD", "")
         if self.feature_bin_path:
@@ -1006,28 +1074,39 @@ class Config:
             if not value
         ]
         if missing:
+            logger.error("Config.__post_init__() : champs obligatoires manquants : {}", missing)
             raise ValueError(f"Champs obligatoires manquants : {', '.join(missing)}")
         if not self.ssh_password:
+            logger.error("Config.__post_init__() : mot de passe SSH manquant")
             raise ValueError("Mot de passe SSH manquant (champ 'ssh_password' ou variable SWITCH_SSH_PASSWORD)")
         if self.model and self.model not in MODEL_PROFILES:
+            logger.error("Config.__post_init__() : modèle invalide {!r}", self.model)
             raise ValueError(f"Modèle invalide : {self.model!r} (choix : {', '.join(sorted(MODEL_PROFILES))})")
         if self.output_mode not in ("fifo", "tap", "rpcap"):
+            logger.error("Config.__post_init__() : output_mode invalide {!r}", self.output_mode)
             raise ValueError(f"output_mode invalide : {self.output_mode!r} (choix : fifo, tap, rpcap)")
         if self.output_mode == "tap" and not self.tap_interface:
+            logger.error("Config.__post_init__() : tap_interface requis en mode tap")
             raise ValueError("tap_interface requis quand output_mode == 'tap'")
         if self.transfer_mode not in ("scp", "sshfs"):
+            logger.error("Config.__post_init__() : transfer_mode invalide {!r}", self.transfer_mode)
             raise ValueError(f"transfer_mode invalide : {self.transfer_mode!r} (choix : scp, sshfs)")
         if self.tap_pace_max_gap_seconds <= 0:
+            logger.error("Config.__post_init__() : tap_pace_max_gap_seconds doit être positif")
             raise ValueError("tap_pace_max_gap_seconds doit être strictement positif")
         if self.capture_direction not in ("inbound", "outbound", "bidirection"):
+            logger.error("Config.__post_init__() : capture_direction invalide {!r}", self.capture_direction)
             raise ValueError(
                 f"capture_direction invalide : {self.capture_direction!r} (choix : inbound, outbound, bidirection)"
             )
+        logger.debug("Config.__post_init__() retourne | config validée")
 
     def resolve_default_mount_point(self) -> None:
         """Fixe mount_point à './<switch_ip>' si l'utilisateur a laissé le défaut vide."""
+        logger.debug("resolve_default_mount_point() appelée | mount_point={}", self.mount_point)
         if not self.mount_point or self.mount_point == "./mount":
             self.mount_point = f"./{self.switch_ip}"
+        logger.debug("resolve_default_mount_point() retourne | mount_point résolu")
 
 
 # --------------------------------------------------------------------- #
@@ -1077,11 +1156,15 @@ def sanitize_template_name(name: str) -> str:
             chemin (`/`, `\\`) — protection contre la traversée de
             dossier, ex: "../../etc/passwd".
     """
+    logger.debug("sanitize_template_name() appelée")
     cleaned = name.strip()
     if not cleaned:
+        logger.error("sanitize_template_name() : nom de modèle vide")
         raise ValueError("Nom de modèle vide")
     if any(c in cleaned for c in _FORBIDDEN_TEMPLATE_CHARS):
+        logger.error("sanitize_template_name() : nom invalide (séparateur de chemin)")
         raise ValueError(f"Nom de modèle invalide : {cleaned!r} (les séparateurs de chemin '/' et '\\' sont interdits)")
+    logger.debug("sanitize_template_name() retourne | nom validé")
     return cleaned
 
 
@@ -1094,7 +1177,10 @@ def config_to_template_dict(cfg: Config) -> dict:
     Returns:
         Un dict des champs `init=True` de Config, `ssh_password` exclu.
     """
-    return {name: getattr(cfg, name) for name in _TEMPLATE_FIELDS}
+    logger.debug("config_to_template_dict() appelée | {}", cfg.switch_ip)
+    champs = {name: getattr(cfg, name) for name in _TEMPLATE_FIELDS}
+    logger.debug("config_to_template_dict() retourne | {} champ(s)", len(champs))
+    return champs
 
 
 def template_dict_to_config_kwargs(data: dict) -> dict:
@@ -1111,7 +1197,10 @@ def template_dict_to_config_kwargs(data: dict) -> dict:
         Un dict ne contenant que des clés parmi les champs `init=True` de
         Config, `ssh_password` toujours exclu.
     """
-    return {k: v for k, v in (data or {}).items() if k in _TEMPLATE_FIELDS}
+    logger.debug("template_dict_to_config_kwargs() appelée | {} clé(s)", len(data or {}))
+    filtres = {k: v for k, v in (data or {}).items() if k in _TEMPLATE_FIELDS}
+    logger.debug("template_dict_to_config_kwargs() retourne | {} clé(s) retenues", len(filtres))
+    return filtres
 
 
 def list_capture_templates(models_dir: str | Path) -> list[str]:
@@ -1124,10 +1213,14 @@ def list_capture_templates(models_dir: str | Path) -> list[str]:
         Les noms de modèles (sans extension `.yaml`), triés par ordre
         alphabétique. Liste vide si le dossier n'existe pas encore.
     """
+    logger.debug("list_capture_templates() appelée | dossier={}", models_dir)
     directory = Path(models_dir)
     if not directory.is_dir():
+        logger.debug("list_capture_templates() retourne | [] (dossier absent)")
         return []
-    return sorted(p.stem for p in directory.glob("*.yaml"))
+    modeles = sorted(p.stem for p in directory.glob("*.yaml"))
+    logger.debug("list_capture_templates() retourne | {} modèle(s)", len(modeles))
+    return modeles
 
 
 def save_capture_template(models_dir: str | Path, name: str, data: dict) -> Path:
@@ -1150,6 +1243,7 @@ def save_capture_template(models_dir: str | Path, name: str, data: dict) -> Path
     Raises:
         ValueError: si `name` est invalide.
     """
+    logger.debug("save_capture_template() appelée | modèle={}", name)
     import yaml
 
     clean_name = sanitize_template_name(name)
@@ -1159,6 +1253,7 @@ def save_capture_template(models_dir: str | Path, name: str, data: dict) -> Path
     payload = template_dict_to_config_kwargs(data)
     with open(target, "w", encoding="utf-8") as f:
         yaml.safe_dump(payload, f, sort_keys=True, allow_unicode=True)
+    logger.debug("save_capture_template() retourne | modèle écrit (secret exclu)")
     logger.info("modèle de capture enregistré | {} -> {}", clean_name, target)
     return target
 
@@ -1178,14 +1273,18 @@ def load_capture_template(models_dir: str | Path, name: str) -> dict:
     Raises:
         FileNotFoundError: si le modèle n'existe pas.
     """
+    logger.debug("load_capture_template() appelée | modèle={}", name)
     import yaml
 
     target = Path(models_dir) / f"{name}.yaml"
     if not target.is_file():
+        logger.error("load_capture_template() : modèle introuvable : {}", target)
         raise FileNotFoundError(f"Modèle introuvable : {target}")
     with open(target, encoding="utf-8") as f:
         raw = yaml.safe_load(f) or {}
-    return template_dict_to_config_kwargs(raw)
+    kwargs = template_dict_to_config_kwargs(raw)
+    logger.debug("load_capture_template() retourne | {} clé(s)", len(kwargs))
+    return kwargs
 
 
 # --------------------------------------------------------------------- #
@@ -1243,14 +1342,18 @@ def load_gui_preferences(config_path: str | Path) -> dict:
         effectivement présentes dans le fichier — dict vide si le fichier
         n'existe pas encore, ou si aucune des clés gérées n'y figure.
     """
+    logger.debug("load_gui_preferences() appelée | chemin={}", config_path)
     import yaml
 
     path = Path(config_path)
     if not path.is_file():
+        logger.debug("load_gui_preferences() retourne | [] (fichier absent)")
         return {}
     with open(path, encoding="utf-8") as f:
         raw = yaml.safe_load(f) or {}
-    return {key: raw[key] for key in PREFERENCES_FIELDS if key in raw}
+    prefs = {key: raw[key] for key in PREFERENCES_FIELDS if key in raw}
+    logger.debug("load_gui_preferences() retourne | {} préférence(s)", len(prefs))
+    return prefs
 
 
 def save_gui_preferences(config_path: str | Path, data: dict) -> Path:
@@ -1277,6 +1380,7 @@ def save_gui_preferences(config_path: str | Path, data: dict) -> Path:
     Returns:
         Le chemin du fichier écrit.
     """
+    logger.debug("save_gui_preferences() appelée | chemin={}", config_path)
     import yaml
 
     path = Path(config_path)
@@ -1297,6 +1401,7 @@ def save_gui_preferences(config_path: str | Path, data: dict) -> Path:
     with open(path, "w", encoding="utf-8") as f:
         yaml.safe_dump(existing, f, sort_keys=True, allow_unicode=True)
     logger.info("préférences GUI enregistrées | {} -> {}", updated_keys, path)
+    logger.debug("save_gui_preferences() retourne | fichier écrit")
     return path
 
 
@@ -1358,7 +1463,9 @@ def save_ssh_password_to_keyring(switch_ip: str, ssh_user: str, password: str) -
             l'utilisateur a explicitement demandé à mémoriser ce mot de
             passe, il doit savoir si ça a échoué.
     """
+    logger.debug("save_ssh_password_to_keyring() appelée | compte={}", f"{ssh_user}@{switch_ip}")
     if not KEYRING_AVAILABLE:
+        logger.error("save_ssh_password_to_keyring() : module keyring absent")
         raise RuntimeError(
             "Le module 'keyring' n'est pas installé — impossible de mémoriser le mot de passe. "
             "Installez-le (paquet système python3-keyring, ou 'pip install keyring')."
@@ -1367,8 +1474,10 @@ def save_ssh_password_to_keyring(switch_ip: str, ssh_user: str, password: str) -
     try:
         keyring.set_password(KEYRING_SERVICE_NAME, account, password)
     except keyring.errors.KeyringError as exc:
+        logger.error("save_ssh_password_to_keyring() : échec d'écriture : {}", exc)
         raise RuntimeError(f"Échec de l'écriture dans le trousseau système : {exc}") from exc
     logger.info("mot de passe SSH mémorisé dans le trousseau système | {}", account)
+    logger.debug("save_ssh_password_to_keyring() retourne | mot de passe mémorisé")
 
 
 def load_ssh_password_from_keyring(switch_ip: str, ssh_user: str) -> str | None:
@@ -1386,12 +1495,17 @@ def load_ssh_password_from_keyring(switch_ip: str, ssh_user: str) -> str | None:
         doit jamais bloquer un usage CLI disposant d'un autre moyen de
         fournir le mot de passe (--ssh-password, SWITCH_SSH_PASSWORD).
     """
+    logger.debug("load_ssh_password_from_keyring() appelée | compte={}", f"{ssh_user}@{switch_ip}")
     if not KEYRING_AVAILABLE:
+        logger.debug("load_ssh_password_from_keyring() retourne | None (keyring absent)")
         return None
     account = keyring_account_id(switch_ip, ssh_user)
     try:
-        return keyring.get_password(KEYRING_SERVICE_NAME, account)
-    except keyring.errors.KeyringError:
+        mot_de_passe = keyring.get_password(KEYRING_SERVICE_NAME, account)
+        logger.debug("load_ssh_password_from_keyring() retourne | {}", "trouvé" if mot_de_passe else "absent")
+        return mot_de_passe
+    except keyring.errors.KeyringError as exc:
+        logger.debug("load_ssh_password_from_keyring() retourne | None (trousseau indisponible : {})", exc)
         return None
 
 
@@ -1410,14 +1524,18 @@ def delete_ssh_password_from_keyring(switch_ip: str, ssh_user: str) -> bool:
         rien n'était mémorisé ou si `keyring`/le trousseau système est
         indisponible.
     """
+    logger.debug("delete_ssh_password_from_keyring() appelée | compte={}", f"{ssh_user}@{switch_ip}")
     if not KEYRING_AVAILABLE:
+        logger.debug("delete_ssh_password_from_keyring() retourne | False (keyring absent)")
         return False
     account = keyring_account_id(switch_ip, ssh_user)
     try:
         keyring.delete_password(KEYRING_SERVICE_NAME, account)
         logger.info("mot de passe SSH retiré du trousseau système | {}", account)
+        logger.debug("delete_ssh_password_from_keyring() retourne | True")
         return True
-    except keyring.errors.KeyringError:
+    except keyring.errors.KeyringError as exc:
+        logger.debug("delete_ssh_password_from_keyring() retourne | False (échec : {})", exc)
         return False
 
 
@@ -1460,17 +1578,23 @@ def _open_keepass_db(keepass_path: str, keepass_master_password: str, keepass_ke
         RuntimeError: fichier absent, mot de passe maître incorrect, ou toute
             autre erreur d'ouverture — jamais l'exception brute de pykeepass.
     """
+    logger.debug("_open_keepass_db() appelée | base={}", keepass_path)
     if not Path(keepass_path).is_file():
+        logger.error("_open_keepass_db() : fichier introuvable : {}", keepass_path)
         raise RuntimeError(
             f"Fichier KeePass introuvable : {keepass_path} — cet outil n'en crée jamais, "
             "créez la base au préalable (ex. avec KeePassXC)."
         )
     try:
-        return PyKeePass(keepass_path, password=keepass_master_password, keyfile=keepass_keyfile)
+        base = PyKeePass(keepass_path, password=keepass_master_password, keyfile=keepass_keyfile)
     except CredentialsError as exc:
+        logger.error("_open_keepass_db() : mot de passe maître incorrect : {}", exc)
         raise RuntimeError(f"Mot de passe maître KeePass incorrect pour {keepass_path}") from exc
     except Exception as exc:  # format de fichier invalide, base corrompue, etc.
+        logger.error("_open_keepass_db() : ouverture impossible : {}", exc)
         raise RuntimeError(f"Impossible d'ouvrir le fichier KeePass {keepass_path} : {exc}") from exc
+    logger.debug("_open_keepass_db() retourne | base ouverte")
+    return base
 
 
 def save_ssh_password_to_keepass(
@@ -1503,7 +1627,9 @@ def save_ssh_password_to_keepass(
             silencieusement : l'utilisateur a explicitement demandé cette
             mémorisation.
     """
+    logger.debug("save_ssh_password_to_keepass() appelée | base={}", keepass_path)
     if not KEEPASS_AVAILABLE:
+        logger.error("save_ssh_password_to_keepass() : module pykeepass absent")
         raise RuntimeError(
             "Le module 'pykeepass' n'est pas installé — impossible d'utiliser le repli KeePass. "
             "Installez-le ('pip install pykeepass')."
@@ -1519,8 +1645,10 @@ def save_ssh_password_to_keepass(
             kp.add_entry(kp.root_group, account, ssh_user, password)
         kp.save()
     except Exception as exc:
+        logger.error("save_ssh_password_to_keepass() : échec d'écriture : {}", exc)
         raise RuntimeError(f"Échec de l'écriture dans le fichier KeePass {keepass_path} : {exc}") from exc
     logger.info("mot de passe SSH mémorisé dans le fichier KeePass | {} | {}", keepass_path, account)
+    logger.debug("save_ssh_password_to_keepass() retourne | mot de passe mémorisé")
 
 
 def load_ssh_password_from_keepass(
@@ -1549,15 +1677,20 @@ def load_ssh_password_from_keepass(
         repli qui échoue ne doit jamais bloquer un usage disposant d'un autre
         moyen de fournir le mot de passe.
     """
+    logger.debug("load_ssh_password_from_keepass() appelée | base={}", keepass_path)
     if not KEEPASS_AVAILABLE or not keepass_path or not keepass_master_password:
+        logger.debug("load_ssh_password_from_keepass() retourne | None (repli désactivé)")
         return None
     account = keyring_account_id(switch_ip, ssh_user)
     try:
         kp = _open_keepass_db(keepass_path, keepass_master_password, keepass_keyfile)
         entry = kp.find_entries(title=account, first=True)
-    except RuntimeError:
+    except RuntimeError as exc:
+        logger.debug("load_ssh_password_from_keepass() retourne | None (base inaccessible : {})", exc)
         return None
-    return entry.password if entry is not None else None
+    mot_de_passe = entry.password if entry is not None else None
+    logger.debug("load_ssh_password_from_keepass() retourne | {}", "trouvé" if mot_de_passe else "absent")
+    return mot_de_passe
 
 
 def delete_ssh_password_from_keepass(
@@ -1583,19 +1716,24 @@ def delete_ssh_password_from_keepass(
         `True` si une entrée a effectivement été supprimée, `False` si rien
         n'était mémorisé ou si le repli KeePass est indisponible/inaccessible.
     """
+    logger.debug("delete_ssh_password_from_keepass() appelée | base={}", keepass_path)
     if not KEEPASS_AVAILABLE or not keepass_path or not keepass_master_password:
+        logger.debug("delete_ssh_password_from_keepass() retourne | False (repli désactivé)")
         return False
     account = keyring_account_id(switch_ip, ssh_user)
     try:
         kp = _open_keepass_db(keepass_path, keepass_master_password, keepass_keyfile)
         entry = kp.find_entries(title=account, first=True)
         if entry is None:
+            logger.debug("delete_ssh_password_from_keepass() retourne | False (entrée absente)")
             return False
         kp.delete_entry(entry)
         kp.save()
-    except RuntimeError:
+    except RuntimeError as exc:
+        logger.debug("delete_ssh_password_from_keepass() retourne | False (base inaccessible : {})", exc)
         return False
     logger.info("mot de passe SSH retiré du fichier KeePass | {} | {}", keepass_path, account)
+    logger.debug("delete_ssh_password_from_keepass() retourne | True")
     return True
 
 
@@ -1614,6 +1752,7 @@ def write_capture_metadata(cfg: Config, state: SharedState) -> None:
         state: état partagé (statut NTP, modèle détecté, horodatage de
             démarrage).
     """
+    logger.debug("write_capture_metadata() appelée | cible={}", cfg.archive_dir or cfg.spool_dir)
     target_dir = Path(cfg.archive_dir or cfg.spool_dir)
     target_dir.mkdir(parents=True, exist_ok=True)
     metadata = {
@@ -1634,6 +1773,7 @@ def write_capture_metadata(cfg: Config, state: SharedState) -> None:
     meta_path = target_dir / "capture-meta.json"
     meta_path.write_text(json.dumps(metadata, indent=2, ensure_ascii=False), encoding="utf-8")
     logger.info("write_capture_metadata | écrit={path}", path=meta_path)
+    logger.debug("write_capture_metadata() retourne | métadonnées écrites")
 
 
 # --------------------------------------------------------------------------- #
@@ -1675,12 +1815,17 @@ def compute_average_throughput(
         — horloge locale imprécise plutôt qu'une division par zéro ou un
         débit négatif trompeur).
     """
+    logger.trace("compute_average_throughput() appelée | {} octet(s)", bytes_merged)
     if started_at is None:
+        logger.trace("compute_average_throughput() retourne | None (capture non démarrée)")
         return None
     elapsed = now - started_at
     if elapsed <= 0:
+        logger.trace("compute_average_throughput() retourne | None (écart non positif)")
         return None
-    return bytes_merged / elapsed
+    debit = bytes_merged / elapsed
+    logger.trace("compute_average_throughput() retourne | {} octet/s", debit)
+    return debit
 
 
 def format_transfer_rate(bytes_per_second: float | None) -> str:
@@ -1696,18 +1841,23 @@ def format_transfer_rate(bytes_per_second: float | None) -> str:
         Une chaîne prête à afficher, par ex. `"128,0 Ko/s"`. `"—"` si
         `bytes_per_second` est `None`.
     """
+    logger.trace("format_transfer_rate() appelée | {}", bytes_per_second)
     if bytes_per_second is None:
+        logger.trace("format_transfer_rate() retourne | '—'")
         return "—"
     if bytes_per_second < 0:
         bytes_per_second = 0.0
     value = float(bytes_per_second)
     if value < 1024:
-        return f"{value:.0f} o/s"
-    if value < 1024**2:
-        return f"{value / 1024:.1f} Ko/s"
-    if value < 1024**3:
-        return f"{value / 1024**2:.1f} Mo/s"
-    return f"{value / 1024**3:.1f} Go/s"
+        texte = f"{value:.0f} o/s"
+    elif value < 1024**2:
+        texte = f"{value / 1024:.1f} Ko/s"
+    elif value < 1024**3:
+        texte = f"{value / 1024**2:.1f} Mo/s"
+    else:
+        texte = f"{value / 1024**3:.1f} Go/s"
+    logger.trace("format_transfer_rate() retourne | {}", texte)
+    return texte
 
 
 @dataclass(frozen=True)
@@ -1723,7 +1873,10 @@ class ScpProgress:
 
 def _format_bytes(num_bytes: int) -> str:
     """Taille lisible, mêmes paliers que `format_transfer_rate` (sans « /s »)."""
-    return format_transfer_rate(num_bytes).removesuffix("/s")
+    logger.trace("_format_bytes() appelée | {} octet(s)", num_bytes)
+    texte = format_transfer_rate(num_bytes).removesuffix("/s")
+    logger.trace("_format_bytes() retourne | {}", texte)
+    return texte
 
 
 def format_scp_progress(progress: ScpProgress | None) -> str:
@@ -1731,11 +1884,15 @@ def format_scp_progress(progress: ScpProgress | None) -> str:
 
     Exemple : ``"SCP cap_00003.pcap : 40 % (4.0 Mo / 10.0 Mo)"``.
     """
+    logger.trace("format_scp_progress() appelée | palier={}", progress.name if progress else None)
     if progress is None:
+        logger.trace("format_scp_progress() retourne | chaîne vide")
         return ""
-    return (
+    texte = (
         f"SCP {progress.name} : {progress.percent} % ({_format_bytes(progress.sent)} / {_format_bytes(progress.size)})"
     )
+    logger.trace("format_scp_progress() retourne | palier formaté")
+    return texte
 
 
 @dataclass
@@ -1812,17 +1969,23 @@ class InspectConfig:
 
     def __post_init__(self) -> None:
         """Normalise et valide les champs obligatoires (mêmes règles que Config, sans capture_interface)."""
+        logger.debug("InspectConfig.__post_init__() appelée | {}", self.switch_ip)
         if not self.ssh_password:
             self.ssh_password = os.environ.get("SWITCH_SSH_PASSWORD", "")
         missing = [n for n, v in (("switch_ip", self.switch_ip), ("ssh_user", self.ssh_user)) if not v]
         if missing:
+            logger.error("InspectConfig.__post_init__() : champs obligatoires manquants : {}", missing)
             raise ValueError(f"Champs obligatoires manquants : {', '.join(missing)}")
         if not self.ssh_password:
+            logger.error("InspectConfig.__post_init__() : mot de passe SSH manquant")
             raise ValueError("Mot de passe SSH manquant (champ 'ssh_password' ou SWITCH_SSH_PASSWORD)")
         if self.model and self.model not in MODEL_PROFILES:
+            logger.error("InspectConfig.__post_init__() : modèle invalide {!r}", self.model)
             raise ValueError(f"Modèle invalide : {self.model!r} (choix : {', '.join(sorted(MODEL_PROFILES))})")
         if self.transfer_mode not in ("scp", "sshfs"):
+            logger.error("InspectConfig.__post_init__() : transfer_mode invalide {!r}", self.transfer_mode)
             raise ValueError(f"transfer_mode invalide : {self.transfer_mode!r} (choix : scp, sshfs)")
+        logger.debug("InspectConfig.__post_init__() retourne | config validée")
 
 
 # Intervalle (en secondes) des paquets de maintien de connexion SSH envoyés
@@ -1856,7 +2019,9 @@ def connect_switch(cfg: Config | InspectConfig):
     Raises:
         RuntimeError: si netmiko n'est pas installé.
     """
+    logger.debug("connect_switch() appelée | hôte={}", cfg.switch_ip)
     if ConnectHandler is None:
+        logger.error("connect_switch() : netmiko manquant")
         raise RuntimeError("netmiko manquant : pip install netmiko")
     device = {
         "device_type": "hp_comware",
@@ -1867,7 +2032,9 @@ def connect_switch(cfg: Config | InspectConfig):
         "keepalive": NETMIKO_KEEPALIVE_SECONDS,
     }
     logger.info("connect_switch | host={host}", host=cfg.switch_ip)
-    return ConnectHandler(**device)
+    connexion = ConnectHandler(**device)
+    logger.debug("connect_switch() retourne | session ouverte")
+    return connexion
 
 
 def inspect_switch(cfg: InspectConfig) -> dict:
@@ -1910,6 +2077,7 @@ def inspect_switch(cfg: InspectConfig) -> dict:
         Exception: toute erreur de connexion/commande SSH, laissée remonter
             à l'appelant (CLI ou GUI décident comment la reporter).
     """
+    logger.debug("inspect_switch() appelée | {}", cfg.switch_ip)
     conn = connect_switch(cfg)
     try:
         report: dict = {
@@ -1978,9 +2146,11 @@ def inspect_switch(cfg: InspectConfig) -> dict:
             ntp=report["ntp_synced"],
             rpcap="<vide>" if report["rpcap_status_raw"] is None else "<présente>",
         )
+        logger.debug("inspect_switch() retourne | rapport complet")
         return report
     finally:
         conn.disconnect()
+        logger.debug("inspect_switch() | session fermée")
 
 
 def format_inspect_report(switch_ip: str, transfer_mode: str, report: dict) -> str:
@@ -1999,6 +2169,7 @@ def format_inspect_report(switch_ip: str, transfer_mode: str, report: dict) -> s
     Returns:
         Texte multi-lignes prêt à afficher.
     """
+    logger.debug("format_inspect_report() appelée | {}", switch_ip)
     lines = [f"Switch : {switch_ip}"]
 
     model = report.get("model")
@@ -2051,6 +2222,7 @@ def format_inspect_report(switch_ip: str, transfer_mode: str, report: dict) -> s
 
     lines.append("")
     lines.append("Aucune modification n'a été effectuée sur ce switch (mode dry run).")
+    logger.debug("format_inspect_report() retourne | rapport formaté")
     return "\n".join(lines)
 
 
@@ -2068,12 +2240,14 @@ def format_pacing_analysis_report(pcap_file: Path, report: PacingGapAnalysis) ->
     Returns:
         Texte multi-lignes prêt à afficher.
     """
+    logger.debug("format_pacing_analysis_report() appelée | fichier={}", pcap_file.name)
     lines = [f"Fichier : {pcap_file}"]
     lines.append(f"Trames : {report.frame_count}")
     lines.append(f"Durée de la capture d'origine : {report.capture_duration_seconds:.3f} s")
 
     if report.gap_count == 0:
         lines.append("Une seule trame (ou aucune) : pas d'écart inter-trames à analyser.")
+        logger.debug("format_pacing_analysis_report() retourne | sans écarts")
         return "\n".join(lines)
 
     lines.append(f"Écarts inter-trames ({report.gap_count}) :")
@@ -2101,6 +2275,7 @@ def format_pacing_analysis_report(pcap_file: Path, report: PacingGapAnalysis) ->
         "présents dans ce fichier — pas la durée SCP de rapatriement elle-même, "
         "qui nécessite un switch réel (voir features.md, section « Pas fait »)."
     )
+    logger.debug("format_pacing_analysis_report() retourne | rapport complet")
     return "\n".join(lines)
 
 
@@ -2122,7 +2297,9 @@ def open_scp_ssh_client(cfg: Config):
     Raises:
         RuntimeError: si paramiko/scp ne sont pas installés.
     """
+    logger.debug("open_scp_ssh_client() appelée | hôte={}", cfg.switch_ip)
     if paramiko is None or SCPClient is None:
+        logger.error("open_scp_ssh_client() : paramiko/scp manquants")
         raise RuntimeError("paramiko/scp manquants : pip install paramiko scp")
     client = paramiko.SSHClient()
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -2134,6 +2311,7 @@ def open_scp_ssh_client(cfg: Config):
         look_for_keys=False,
         allow_agent=False,
     )
+    logger.debug("open_scp_ssh_client() retourne | client connecté")
     return client
 
 
@@ -2157,8 +2335,10 @@ def scp_get(
             Voir `make_scp_progress_logger` pour une implémentation prête à
             l'emploi qui journalise sans spammer les logs.
     """
+    logger.debug("scp_get() appelée | distant={}", remote_path)
     with SCPClient(ssh_client.get_transport(), progress=progress_callback) as scp_client:
         scp_client.get(remote_path, str(local_path))
+    logger.debug("scp_get() retourne | fichier rapatrié")
 
 
 def scp_put(
@@ -2174,8 +2354,10 @@ def scp_put(
         progress_callback: voir `scp_get` — même signature, même transmission
             telle quelle à `SCPClient(progress=...)`.
     """
+    logger.debug("scp_put() appelée | distant={}", remote_path)
     with SCPClient(ssh_client.get_transport(), progress=progress_callback) as scp_client:
         scp_client.put(str(local_path), remote_path)
+    logger.debug("scp_put() retourne | fichier envoyé")
 
 
 def make_scp_progress_logger(
@@ -2217,17 +2399,22 @@ def make_scp_progress_logger(
         transfert (0%, ou en dessous du premier palier) n'a rien
         d'informatif à journaliser.
     """
+    logger.trace("make_scp_progress_logger() appelée | contexte={}", context)
     last_logged_threshold: dict[str, int] = {}
 
     def _progress(filename: bytes | str, size: int, sent: int) -> None:
+        logger.trace("_progress() appelée | {} octet(s) envoyés", sent)
         name = filename.decode() if isinstance(filename, bytes) else filename
         if size <= 0:
+            logger.trace("_progress() retourne | fichier vide")
             return  # fichier vide : aucun pourcentage de progression n'a de sens.
         percent = min(int(sent * 100 / size), 100)
         threshold = (percent // threshold_percent) * threshold_percent
         if threshold == 0:
+            logger.trace("_progress() retourne | premier palier non atteint")
             return  # rien à signaler avant le premier palier réellement atteint.
         if threshold <= last_logged_threshold.get(name, -1):
+            logger.trace("_progress() retourne | palier déjà journalisé")
             return
         last_logged_threshold[name] = threshold
         logger.debug(
@@ -2243,7 +2430,9 @@ def make_scp_progress_logger(
                 on_progress(ScpProgress(context=context, name=name, percent=threshold, sent=sent, size=size))
             except Exception:  # noqa: BLE001 -- l'affichage ne doit jamais casser le transfert
                 logger.exception("{context} | callback de progression en échec", context=context)
+        logger.trace("_progress() retourne | palier journalisé")
 
+    logger.trace("make_scp_progress_logger() retourne | callback prêt")
     return _progress
 
 
@@ -2263,11 +2452,14 @@ def list_remote_pcap_files(conn, prefix: str) -> list[str]:
         La liste des noms de fichiers trouvés, triée (donc par ordre
         chronologique grâce à l'horodatage Comware dans le nom).
     """
+    logger.debug("list_remote_pcap_files() appelée | préfixe={}", prefix)
     cmd = f"dir flash:/{prefix}*.pcap"
     logger.debug("list_remote_pcap_files | {cmd}", cmd=cmd)
     output = conn.send_command(cmd)
     filenames = [line.strip().split()[-1] for line in output.splitlines() if line.strip().endswith(".pcap")]
-    return sorted(filenames)
+    tries = sorted(filenames)
+    logger.debug("list_remote_pcap_files() retourne | {} fichier(s)", len(tries))
+    return tries
 
 
 def delete_remote_all_file_capture(conn, capture_prefix) -> None:
@@ -2277,6 +2469,7 @@ def delete_remote_all_file_capture(conn, capture_prefix) -> None:
         conn: session netmiko déjà connectée.
         capture_prefix: prefixe de capture
     """
+    logger.debug("delete_remote_all_file_capture() appelée | préfixe={}", capture_prefix)
     try:
         files = list_remote_pcap_files(conn, capture_prefix)
     except Exception:  # noqa: BLE001
@@ -2284,6 +2477,7 @@ def delete_remote_all_file_capture(conn, capture_prefix) -> None:
         return
 
     if len(files) <= 0:
+        logger.debug("delete_remote_all_file_capture() retourne | rien à faire")
         return  # rien à faire : 0
 
     # on efface tous les fichiers de capture encore présent
@@ -2300,12 +2494,14 @@ def delete_remote_file(conn, filename: str) -> None:
         conn: session netmiko déjà connectée.
         filename: nom du fichier à supprimer (sans le préfixe `flash:/`).
     """
+    logger.debug("delete_remote_file() appelée | fichier={}", filename)
     cmd = f"delete flash:/{filename}"
     logger.info("delete_remote_file | {cmd}", cmd=cmd)
     output = conn.send_command_timing(cmd, read_timeout=15)
     if "Continue?" in output or "[Y/N]" in output or "?" in output:
         logger.debug("delete_remote_file | confirmation envoyée (y)")
         conn.send_command_timing("y", read_timeout=15)
+    logger.debug("delete_remote_file() retourne | fichier traité")
 
 
 def build_capture_filter(switch_ip: str, capture_filter: str, hide_capture_traffic: bool = True) -> str:
@@ -2334,14 +2530,18 @@ def build_capture_filter(switch_ip: str, capture_filter: str, hide_capture_traff
         l'exclusion ni un filtre utilisateur ne s'appliquent — auquel cas
         `packet-capture` tourne sans aucune clause `capture-filter`.
     """
+    logger.debug("build_capture_filter() appelée | masquer trafic={}", hide_capture_traffic)
     clauses = []
     if hide_capture_traffic:
         clauses.append(f"not (host {switch_ip} and port 22)")
     if capture_filter:
         clauses.append(capture_filter)
     if not clauses:
+        logger.debug("build_capture_filter() retourne | clause vide")
         return ""
-    return f'capture-filter "{" and ".join(clauses)}" '
+    clause = f'capture-filter "{" and ".join(clauses)}" '
+    logger.debug("build_capture_filter() retourne | clause construite")
+    return clause
 
 
 def build_capture_direction_clause(capture_direction: str) -> str:
@@ -2371,10 +2571,14 @@ def build_capture_direction_clause(capture_direction: str) -> str:
             valide déjà ce champ, cette fonction peut aussi être appelée
             directement, ex: en test).
     """
+    logger.debug("build_capture_direction_clause() appelée | sens={}", capture_direction)
     if capture_direction == "inbound":
+        logger.debug("build_capture_direction_clause() retourne | mot-clé vide")
         return ""
     if capture_direction in ("outbound", "bidirection"):
+        logger.debug("build_capture_direction_clause() retourne | mot-clé {}", capture_direction)
         return f"{capture_direction} "
+    logger.error("build_capture_direction_clause() : sens invalide {!r}", capture_direction)
     raise ValueError(f"capture_direction invalide : {capture_direction!r} (choix : inbound, outbound, bidirection)")
 
 
@@ -2402,13 +2606,16 @@ class SetupAndCaptureThread(threading.Thread):
     """
 
     def __init__(self, cfg: Config, state: SharedState) -> None:
+        logger.debug("SetupAndCaptureThread.__init__() appelée | {}", cfg.switch_ip)
         super().__init__(name="setup-capture", daemon=True)
         self.cfg = cfg
         self.state = state
         self._prepared = False
+        logger.debug("SetupAndCaptureThread.__init__() retourne | thread prêt")
 
     def run(self) -> None:
         """Point d'entrée Thread classique : `prepare()` puis capture bloquante."""
+        logger.debug("SetupAndCaptureThread.run() appelée")
         try:
             self.prepare()
             self.start_capture_blocking()
@@ -2416,6 +2623,7 @@ class SetupAndCaptureThread(threading.Thread):
             logger.exception("setup-capture | échec du thread")
             self.state.stop_event.set()
             self.state.capture_started.set()  # débloque le thread 2 s'il attend
+        logger.debug("SetupAndCaptureThread.run() retourne | thread terminé")
 
     def prepare(self) -> None:
         """Phase « installation » seule : modèle, SCP/NTP, feature. Ne lance pas la capture.
@@ -2425,11 +2633,13 @@ class SetupAndCaptureThread(threading.Thread):
                 laissée remonter à l'appelant (qui décide comment la
                 reporter — logs, callback GUI, etc.).
         """
+        logger.debug("prepare() appelée")
         self._prepare_switch()
         if self.state.needs_feature_install:
             self._push_feature_file()
             self._activate_feature()
         self._prepared = True
+        logger.debug("prepare() retourne | préparation terminée")
 
     def start_capture_blocking(self) -> None:
         """Phase « démarrage » seule : lance la capture, bloque jusqu'à l'arrêt.
@@ -2437,25 +2647,31 @@ class SetupAndCaptureThread(threading.Thread):
         Raises:
             RuntimeError: si `prepare()` n'a pas été appelé avant.
         """
+        logger.debug("start_capture_blocking() appelée")
         if not self._prepared:
+            logger.error("start_capture_blocking() : prepare() non appelé")
             raise RuntimeError("prepare() doit être appelé avant start_capture_blocking()")
         self.state.started_at = time.time()
         self.state.capture_started.set()
         self._run_capture_blocking()
+        logger.debug("start_capture_blocking() retourne | capture terminée")
 
     def _prepare_switch(self) -> None:
         """Détecte le modèle, active SFTP si besoin, vérifie NTP, résout le .bin si nécessaire."""
+        logger.debug("_prepare_switch() appelée | {}", self.cfg.switch_ip)
         conn = connect_switch(self.cfg)
         try:
             logger.debug("prepare_switch | display version")
             version_output = conn.send_command("display version")
             model = self.cfg.model or detect_model(version_output)
             if not model:
+                logger.error("_prepare_switch() : modèle non reconnu")
                 raise RuntimeError(
                     "Modèle switch non reconnu automatiquement depuis 'display version'. "
                     f"Sélectionnez-le manuellement (choix : {', '.join(sorted(MODEL_PROFILES))})"
                 )
             if model not in MODEL_PROFILES:
+                logger.error("_prepare_switch() : modèle inconnu {!r}", model)
                 raise RuntimeError(f"Modèle inconnu : {model!r}")
 
             profile = MODEL_PROFILES[model]
@@ -2468,6 +2684,7 @@ class SetupAndCaptureThread(threading.Thread):
             )
 
             if profile["packet_capture"] == "unsupported":
+                logger.error("_prepare_switch() : packet-capture non supporté sur {}", model)
                 raise RuntimeError(f"packet-capture non supporté sur {model} : {profile['notes']}")
 
             self.state.needs_feature_install = profile["packet_capture"] == "installable"
@@ -2485,6 +2702,7 @@ class SetupAndCaptureThread(threading.Thread):
                     summary=summary.strip() or "<vide>",
                 )
                 self.state.feature_already_installed = True
+                logger.debug("_prepare_switch() retourne | feature déjà installée")
                 return
 
             logger.debug("prepare_switch | display install active")
@@ -2500,6 +2718,7 @@ class SetupAndCaptureThread(threading.Thread):
             if not self.cfg.feature_bin_path:
                 resolved = resolve_feature_bin(self.cfg.feature_bin_dir, model, software_version)
                 if resolved is None:
+                    logger.error("_prepare_switch() : aucun .bin packet-capture trouvé pour {}", model)
                     raise RuntimeError(
                         f"Aucun .bin packet-capture trouvé sous {self.cfg.feature_bin_dir}/{model} "
                         f"(version {software_version or '?'}). Déposez-y le fichier adapté, ou "
@@ -2514,6 +2733,7 @@ class SetupAndCaptureThread(threading.Thread):
                 logger.info("prepare_switch | feature déjà installée, activation sautée")
         finally:
             conn.disconnect()
+            logger.debug("_prepare_switch() retourne | switch préparé")
 
     def _ensure_transfer_service(self, conn) -> None:
         """Active le service de transfert de fichiers requis (SCP ou SFTP).
@@ -2526,6 +2746,7 @@ class SetupAndCaptureThread(threading.Thread):
         Args:
             conn: session netmiko déjà connectée.
         """
+        logger.debug("_ensure_transfer_service() appelée | mode={}", self.cfg.transfer_mode)
         command = "scp server enable" if self.cfg.transfer_mode == "scp" else "sftp server enable"
         service_label = "scp" if self.cfg.transfer_mode == "scp" else "sftp"
 
@@ -2544,6 +2765,7 @@ class SetupAndCaptureThread(threading.Thread):
             conn.exit_config_mode()
         else:
             logger.info("ensure_transfer_service | {cmd} déjà actif", cmd=command)
+        logger.debug("_ensure_transfer_service() retourne | service vérifié")
 
     def _ensure_ntp(self, conn) -> None:
         """Vérifie la synchronisation NTP du switch, la configure si besoin.
@@ -2559,8 +2781,10 @@ class SetupAndCaptureThread(threading.Thread):
             conn: session netmiko déjà connectée (réutilisée, pas de
                 nouvelle connexion SSH).
         """
+        logger.debug("_ensure_ntp() appelée | ensure_ntp={}", self.cfg.ensure_ntp)
         if not self.cfg.ensure_ntp:
             logger.info("ensure_ntp | vérification désactivée (ensure_ntp=False)")
+            logger.debug("_ensure_ntp() retourne | vérification désactivée")
             return
 
         logger.debug("ensure_ntp | display ntp-service status")
@@ -2574,6 +2798,7 @@ class SetupAndCaptureThread(threading.Thread):
                 "ensure_ntp | horloge synchronisée : {detail}",
                 detail=self.state.ntp_detail,
             )
+            logger.debug("_ensure_ntp() retourne | déjà synchronisé")
             return
 
         logger.warning("ensure_ntp | horloge non synchronisée sur ce switch")
@@ -2583,6 +2808,7 @@ class SetupAndCaptureThread(threading.Thread):
                 "peuvent dériver et ne seront pas fiablement comparables avec d'autres "
                 "points de capture (client/routeur/serveur)"
             )
+            logger.debug("_ensure_ntp() retourne | pas de serveur configuré")
             return
 
         logger.info(
@@ -2614,14 +2840,17 @@ class SetupAndCaptureThread(threading.Thread):
                 "ensure_ntp | serveur NTP configuré mais pas encore synchronisé (normal, "
                 "la synchro initiale peut prendre plusieurs minutes) — la capture démarre quand même"
             )
+        logger.debug("_ensure_ntp() retourne | vérification terminée")
 
     def _mount_sshfs(self) -> None:
         """Monte la flash du switch en local via sshfs (idempotent, mode "sshfs" seulement)."""
+        logger.debug("_mount_sshfs() appelée | point={}", self.cfg.mount_point)
         mnt = Path(self.cfg.mount_point)
         mnt.mkdir(parents=True, exist_ok=True)
 
         if self._is_mounted(mnt):
             logger.info("mount_sshfs | {mnt} déjà monté", mnt=mnt)
+            logger.debug("_mount_sshfs() retourne | déjà monté")
             return
 
         cmd = [
@@ -2637,15 +2866,21 @@ class SetupAndCaptureThread(threading.Thread):
         ]
         logger.info("mount_sshfs | {cmd}", cmd=" ".join(cmd))
         subprocess.run(cmd, check=True)
+        logger.debug("_mount_sshfs() retourne | montage effectué")
 
     @staticmethod
     def _is_mounted(path: Path) -> bool:
         """Indique si `path` est un point de montage actif."""
-        return subprocess.run(["mountpoint", "-q", str(path)], check=False).returncode == 0
+        logger.trace("_is_mounted() appelée | chemin={}", path)
+        monte = subprocess.run(["mountpoint", "-q", str(path)], check=False).returncode == 0
+        logger.trace("_is_mounted() retourne | {}", monte)
+        return monte
 
     def _record_scp_progress(self, progress: ScpProgress) -> None:
         """Publie le palier SCP dans l'état partagé (page « Journal », issue #70)."""
+        logger.trace("_record_scp_progress() appelée | palier={}", progress.name)
         self.state.scp_progress = progress
+        logger.trace("_record_scp_progress() retourne | palier publié")
 
     def _push_feature_file(self) -> None:
         """Pousse le .bin de la feature sur la flash, sauf si déjà installée.
@@ -2653,7 +2888,9 @@ class SetupAndCaptureThread(threading.Thread):
         Via SCP (mode par défaut) ou via le montage sshfs (mode legacy),
         selon `Config.transfer_mode`.
         """
+        logger.debug("_push_feature_file() appelée | installée={}", self.state.feature_already_installed)
         if self.state.feature_already_installed:
+            logger.debug("_push_feature_file() retourne | déjà installée")
             return
         src = Path(self.cfg.feature_bin_path)
 
@@ -2662,6 +2899,7 @@ class SetupAndCaptureThread(threading.Thread):
             dst = Path(self.cfg.mount_point) / "flash" / self.cfg.feature_filename
             logger.info("push_feature_file | (sshfs) {src} -> {dst}", src=src, dst=dst)
             shutil.copy(src, dst)
+            logger.debug("_push_feature_file() retourne | envoyé via sshfs")
             return
 
         # Chemin SCP réel (protocole de transfert de fichier) : la racine "/"
@@ -2681,10 +2919,13 @@ class SetupAndCaptureThread(threading.Thread):
             )
         finally:
             ssh_client.close()
+        logger.debug("_push_feature_file() retourne | envoyé via scp")
 
     def _activate_feature(self) -> None:
         """Active la feature packet-capture via 'install activate feature'."""
+        logger.debug("_activate_feature() appelée | installée={}", self.state.feature_already_installed)
         if self.state.feature_already_installed:
+            logger.debug("_activate_feature() retourne | déjà installée")
             return
         conn = connect_switch(self.cfg)
         try:
@@ -2700,10 +2941,12 @@ class SetupAndCaptureThread(threading.Thread):
 
     def _run_capture_blocking(self) -> None:
         """Dispatch vers l'implémentation correspondant à `output_mode`."""
+        logger.debug("_run_capture_blocking() appelée | mode={}", self.cfg.output_mode)
         if self.cfg.output_mode == "rpcap":
             self._run_rpcap_blocking()
         else:
             self._run_capture_blocking_local()
+        logger.debug("_run_capture_blocking() retourne | capture terminée")
 
     def _run_capture_blocking_local(self) -> None:
         """Lance packet-capture local (avec filtre inline optionnel) dans sa propre session SSH.
@@ -2712,6 +2955,7 @@ class SetupAndCaptureThread(threading.Thread):
         fichiers .pcap en ring-buffer sur sa flash, rapatriés par
         `CaptureRotationThread`.
         """
+        logger.debug("_run_capture_blocking_local() appelée")
         conn = connect_switch(self.cfg)
 
         delete_remote_all_file_capture(conn, self.cfg.capture_prefix)
@@ -2744,6 +2988,7 @@ class SetupAndCaptureThread(threading.Thread):
             time.sleep(2)
         finally:
             conn.disconnect()
+            logger.debug("_run_capture_blocking_local() retourne | session fermée")
 
     def _run_rpcap_blocking(self) -> None:
         """Démarre `packet-capture remote` (RPCAP natif Comware) et attend l'arrêt.
@@ -2757,6 +3002,7 @@ class SetupAndCaptureThread(threading.Thread):
         écrit sur la flash ni rapatrié : Wireshark se connecte directement
         au switch via `rpcap://<switch_ip>:<port>/<interface>`.
         """
+        logger.debug("_run_rpcap_blocking() appelée | port={}", self.cfg.rpcap_port)
         conn = connect_switch(self.cfg)
         try:
             direction_clause = build_capture_direction_clause(self.cfg.capture_direction)
@@ -2785,6 +3031,7 @@ class SetupAndCaptureThread(threading.Thread):
             logger.debug("run_rpcap | sortie arrêt={output}", output=stop_output.strip())
         finally:
             conn.disconnect()
+            logger.debug("_run_rpcap_blocking() retourne | session fermée")
 
 
 # --------------------------------------------------------------------------- #
@@ -2808,6 +3055,7 @@ class CaptureRotationThread(threading.Thread):
     """
 
     def __init__(self, cfg: Config, state: SharedState) -> None:
+        logger.debug("CaptureRotationThread.__init__() appelée | {}", cfg.switch_ip)
         super().__init__(name="capture-rotation", daemon=True)
         self.cfg = cfg
         self.state = state
@@ -2846,15 +3094,20 @@ class CaptureRotationThread(threading.Thread):
         self._scp_progress_logger = make_scp_progress_logger(
             "process_closed_file_scp", on_progress=self._record_scp_progress
         )
+        logger.debug("CaptureRotationThread.__init__() retourne | thread prêt")
 
     def _record_scp_progress(self, progress: ScpProgress) -> None:
         """Publie le palier SCP dans l'état partagé (page « Journal », issue #70)."""
+        logger.trace("_record_scp_progress() appelée | palier={}", progress.name)
         self.state.scp_progress = progress
+        logger.trace("_record_scp_progress() retourne | palier publié")
 
     def run(self) -> None:
         """Point d'entrée du thread : attend la capture, puis poll en boucle."""
+        logger.debug("CaptureRotationThread.run() appelée")
         self.state.capture_started.wait(timeout=120)
         if self.state.stop_event.is_set():
+            logger.debug("CaptureRotationThread.run() retourne | arrêt demandé avant démarrage")
             return
 
         if self.cfg.output_mode == "tap":
@@ -2877,6 +3130,7 @@ class CaptureRotationThread(threading.Thread):
                 time.sleep(self.cfg.poll_interval)
         finally:
             self._cleanup()
+        logger.debug("CaptureRotationThread.run() retourne | thread terminé")
 
     def _setup_tap(self) -> None:
         """Crée/active l'interface TAP configurée et s'y attache en écriture.
@@ -2887,6 +3141,7 @@ class CaptureRotationThread(threading.Thread):
         `Config.tap_launch_wireshark` est activé (voir
         `_launch_wireshark_tap`).
         """
+        logger.debug("_setup_tap() appelée | interface={}", self.cfg.tap_interface)
         ensure_tap_interface(self.cfg.tap_interface)
         if self.cfg.tap_launch_wireshark:
             self._launch_wireshark_tap()
@@ -2899,6 +3154,7 @@ class CaptureRotationThread(threading.Thread):
         )
         self._injector_thread.start()
         logger.info("setup_tap | attaché à {iface}", iface=self.cfg.tap_interface)
+        logger.debug("_setup_tap() retourne | interface attachée")
 
     def _injector_loop(self) -> None:
         """Boucle du thread dédié à la réinjection TAP (démarré par _setup_tap).
@@ -2916,14 +3172,17 @@ class CaptureRotationThread(threading.Thread):
         l'arrêt — ou dès réception de la sentinelle None posée par
         _cleanup (réveil immédiat, sans attendre le timeout ci-dessous).
         """
+        logger.debug("_injector_loop() appelée")
         while True:
             try:
                 pcap_file = self._tap_queue.get(timeout=0.5)
             except queue.Empty:
                 if self.state.stop_event.is_set():
+                    logger.debug("_injector_loop() retourne | arrêt demandé")
                     return
                 continue
             if pcap_file is None:  # sentinelle de fin explicite, voir _cleanup
+                logger.debug("_injector_loop() retourne | sentinelle reçue")
                 return
             try:
                 self._feed_into_tap(pcap_file)
@@ -2934,16 +3193,21 @@ class CaptureRotationThread(threading.Thread):
                 )
             finally:
                 self._tap_queue.task_done()
+                logger.trace("_injector_loop() retourne | fichier traité")
+        logger.debug("_injector_loop() retourne | boucle terminée")
 
     def _setup_fifo(self) -> None:
         """Crée (ou recrée) le FIFO nommé utilisé pour le flux live."""
+        logger.debug("_setup_fifo() appelée | chemin={}", self.fifo_path)
         if self.fifo_path.exists():
             self.fifo_path.unlink()
         os.mkfifo(self.fifo_path)
         logger.info("setup_fifo | créé={path}", path=self.fifo_path)
+        logger.debug("_setup_fifo() retourne | fifo prêt")
 
     def _launch_wireshark(self) -> None:
         """Lance Wireshark en lecture sur le FIFO et ouvre le FIFO en écriture."""
+        logger.debug("_launch_wireshark() appelée | fifo={}", self.fifo_path)
         logger.info("launch_wireshark | fifo={path}", path=self.fifo_path)
         self._wireshark_proc = subprocess.Popen(["wireshark", "-k", "-i", str(self.fifo_path)])
         logger.info("launch_wireshark | en attente que Wireshark ouvre le FIFO")
@@ -2954,6 +3218,7 @@ class CaptureRotationThread(threading.Thread):
         # ici, la durée de vie dépasse cette fonction — d'où le noqa.
         self._fifo_fd = open(self.fifo_path, "wb", buffering=0)  # noqa: SIM115
         logger.info("launch_wireshark | fifo ouvert en écriture")
+        logger.debug("_launch_wireshark() retourne | lecteur attaché")
 
     def _launch_wireshark_tap(self) -> None:
         """Lance Wireshark en écoute sur l'interface TAP déjà créée.
@@ -2969,48 +3234,60 @@ class CaptureRotationThread(threading.Thread):
         (comme pour toute capture réseau qui démarre après le début du
         trafic).
         """
+        logger.debug("_launch_wireshark_tap() appelée | interface={}", self.cfg.tap_interface)
         logger.info("launch_wireshark_tap | interface={iface}", iface=self.cfg.tap_interface)
         self._wireshark_proc = subprocess.Popen(["wireshark", "-k", "-i", self.cfg.tap_interface])
+        logger.debug("_launch_wireshark_tap() retourne | processus lancé")
 
     def _poll_once(self) -> None:
         """Scrute la flash (SCP ou sshfs, selon transfer_mode) et traite les fichiers clôturés."""
+        logger.trace("_poll_once() appelée | mode={}", self.cfg.transfer_mode)
         if self.cfg.transfer_mode == "scp":
             self._poll_once_scp()
         else:
             self._poll_once_sshfs()
+        logger.trace("_poll_once() retourne | scrutation faite")
 
     def _poll_once_scp(self) -> None:
         """Liste les .pcap via SSH ('dir') et traite tous les fichiers clôturés."""
+        logger.trace("_poll_once_scp() appelée")
         try:
             files = list_remote_pcap_files(self._poll_conn, self.cfg.capture_prefix)
         except Exception:  # noqa: BLE001
             logger.exception("poll_once_scp | échec de la liste des fichiers distants")
+            logger.trace("_poll_once_scp() retourne | échec listage")
             return
 
         if len(files) <= 1:
+            logger.trace("_poll_once_scp() retourne | rien à traiter")
             return  # rien à faire : 0 ou seulement le fichier en cours d'écriture
 
         # Le dernier (tri = plus récent grâce à l'horodatage Comware dans le
         # nom) est encore en cours d'écriture par le switch : on n'y touche pas.
         for filename in files[:-1]:
             self._process_closed_file_scp(filename)
+        logger.trace("_poll_once_scp() retourne | fichiers traités")
 
     def _poll_once_sshfs(self) -> None:
         """Scrute le montage sshfs et traite tous les fichiers clôturés trouvés."""
+        logger.trace("_poll_once_sshfs() appelée")
         flash_dir = Path(self.cfg.mount_point) / "flash"
         try:
             files = sorted(flash_dir.glob(f"{self.cfg.capture_prefix}*.pcap"))
         except FileNotFoundError:
             logger.warning("poll_once_sshfs | point de montage inaccessible pour l'instant")
+            logger.trace("_poll_once_sshfs() retourne | montage indisponible")
             return
 
         if len(files) <= 1:
+            logger.trace("_poll_once_sshfs() retourne | rien à traiter")
             return  # rien à faire : 0 ou seulement le fichier en cours d'écriture
 
         # Le dernier (nom trié = plus récent grâce à l'horodatage Comware)
         # est encore en cours d'écriture par le switch : on n'y touche pas.
         for f in files[:-1]:
             self._process_closed_file_sshfs(f)
+        logger.trace("_poll_once_sshfs() retourne | fichiers traités")
 
     def _process_closed_file_scp(self, filename: str) -> None:
         """Rapatrie via SCP, supprime côté switch, puis réinjecte un fichier clôturé.
@@ -3019,6 +3296,7 @@ class CaptureRotationThread(threading.Thread):
             filename: nom du fichier .pcap clôturé (tel que retourné par
                 `list_remote_pcap_files`, sans le préfixe `flash:/`).
         """
+        logger.debug("_process_closed_file_scp() appelée | fichier={}", filename)
         local_copy = self.spool_dir / filename
         # Chemin SCP réel, sans "flash:" (voir _push_feature_file) : seule la
         # commande CLI 'dir'/'delete' (list_remote_pcap_files/delete_remote_file,
@@ -3037,6 +3315,7 @@ class CaptureRotationThread(threading.Thread):
             logger.exception(
                 "process_closed_file_scp | échec de connexion SCP, nouvel essai au prochain poll",
             )
+            logger.debug("_process_closed_file_scp() retourne | échec connexion")
             return
         try:
             logger.info(
@@ -3050,6 +3329,7 @@ class CaptureRotationThread(threading.Thread):
                 "process_closed_file_scp | échec scp de {f}, nouvel essai au prochain poll",
                 f=filename,
             )
+            logger.debug("_process_closed_file_scp() retourne | échec scp")
             return
         finally:
             try:
@@ -3067,6 +3347,7 @@ class CaptureRotationThread(threading.Thread):
             )
 
         self._dispatch_for_injection(local_copy)
+        logger.debug("_process_closed_file_scp() retourne | fichier traité")
 
     def _process_closed_file_sshfs(self, remote_file: Path) -> None:
         """Copie, supprime côté switch, puis réinjecte un fichier .pcap clôturé.
@@ -3074,6 +3355,7 @@ class CaptureRotationThread(threading.Thread):
         Args:
             remote_file: chemin (vu via sshfs) du fichier .pcap clôturé.
         """
+        logger.debug("_process_closed_file_sshfs() appelée | fichier={}", remote_file.name)
         local_copy = self.spool_dir / remote_file.name
         try:
             logger.info(
@@ -3087,6 +3369,7 @@ class CaptureRotationThread(threading.Thread):
                 "process_closed_file_sshfs | échec copie de {f}, nouvel essai au prochain poll",
                 f=remote_file,
             )
+            logger.debug("_process_closed_file_sshfs() retourne | échec copie")
             return
 
         try:
@@ -3099,6 +3382,7 @@ class CaptureRotationThread(threading.Thread):
             )
 
         self._dispatch_for_injection(local_copy)
+        logger.debug("_process_closed_file_sshfs() retourne | fichier traité")
 
     def _dispatch_for_injection(self, local_copy: Path) -> None:
         """Envoie un fichier .pcap fraîchement rapatrié vers la réinjection.
@@ -3113,10 +3397,12 @@ class CaptureRotationThread(threading.Thread):
         Mode "fifo" : réinjection directe et synchrone, comportement
         inchangé — pas de lissage en mode fifo, donc rien à découpler ici.
         """
+        logger.trace("_dispatch_for_injection() appelée | fichier={}", local_copy.name)
         if self.cfg.output_mode == "tap":
             self._tap_queue.put(local_copy)
         else:
             self._feed_into_fifo(local_copy)
+        logger.trace("_dispatch_for_injection() retourne | fichier dispatché")
 
     def _feed_into_tap(self, pcap_file: Path) -> None:
         """Réinjecte chaque trame d'un fichier .pcap clôturé dans l'interface TAP.
@@ -3137,11 +3423,13 @@ class CaptureRotationThread(threading.Thread):
         Args:
             pcap_file: fichier .pcap local déjà rapatrié.
         """
+        logger.debug("_feed_into_tap() appelée | fichier={}", pcap_file.name)
         if self._tap_writer is None:
             logger.warning(
                 "feed_into_tap | interface TAP pas encore prête, {f} ignoré",
                 f=pcap_file,
             )
+            logger.debug("_feed_into_tap() retourne | interface absente")
             return
 
         file_size = pcap_file.stat().st_size
@@ -3164,6 +3452,7 @@ class CaptureRotationThread(threading.Thread):
                     frame_count += 1
         except ValueError as exc:
             logger.warning("feed_into_tap | {f} ignoré : {err}", f=pcap_file, err=exc)
+            logger.debug("_feed_into_tap() retourne | fichier ignoré")
             return
 
         logger.info(
@@ -3181,6 +3470,7 @@ class CaptureRotationThread(threading.Thread):
             archive_capture_file(pcap_file, Path(self.cfg.archive_dir), self.cfg.archive_as_pcapng)
         else:
             pcap_file.unlink(missing_ok=True)
+        logger.debug("_feed_into_tap() retourne | réinjection archivée")
 
     def _feed_into_fifo(self, pcap_file: Path) -> None:
         """Concatène les trames d'un fichier .pcap clôturé dans le flux FIFO live.
@@ -3192,8 +3482,10 @@ class CaptureRotationThread(threading.Thread):
         Args:
             pcap_file: fichier .pcap local déjà rapatrié.
         """
+        logger.debug("_feed_into_fifo() appelée | fichier={}", pcap_file.name)
         if self._fifo_fd is None:
             logger.warning("feed_into_fifo | fifo pas encore prêt, {f} ignoré", f=pcap_file)
+            logger.debug("_feed_into_fifo() retourne | fifo absent")
             return
 
         file_size = pcap_file.stat().st_size
@@ -3205,6 +3497,7 @@ class CaptureRotationThread(threading.Thread):
                     "feed_into_fifo | {f} trop petit / pcap invalide, ignoré",
                     f=pcap_file,
                 )
+                logger.debug("_feed_into_fifo() retourne | pcap trop petit")
                 return
 
             magic = struct.unpack("<I", header[:4])[0]
@@ -3214,6 +3507,7 @@ class CaptureRotationThread(threading.Thread):
                     f=pcap_file,
                     magic=magic,
                 )
+                logger.debug("_feed_into_fifo() retourne | magic inattendu")
                 return
 
             if not self._wrote_global_header:
@@ -3237,9 +3531,11 @@ class CaptureRotationThread(threading.Thread):
             archive_capture_file(pcap_file, Path(self.cfg.archive_dir), self.cfg.archive_as_pcapng)
         else:
             pcap_file.unlink(missing_ok=True)
+        logger.debug("_feed_into_fifo() retourne | fichier fusionné")
 
     def _cleanup(self) -> None:
         """Ferme le FIFO/TAP (output_mode) et les connexions SCP/SSH (transfer_mode)."""
+        logger.debug("_cleanup() appelée")
         logger.info(
             "cleanup | nettoyage du thread de rotation (output={out}, transfer={trans})",
             out=self.cfg.output_mode,
@@ -3272,6 +3568,7 @@ class CaptureRotationThread(threading.Thread):
                 self._tap_writer.close()
             if self.cfg.tap_cleanup_on_stop and self.cfg.tap_interface:
                 delete_tap_interface(self.cfg.tap_interface)
+            logger.debug("_cleanup() retourne | mode tap nettoyé")
             return
 
         if self._fifo_fd:
@@ -3284,6 +3581,7 @@ class CaptureRotationThread(threading.Thread):
                 self.fifo_path.unlink()
             except Exception:  # noqa: BLE001
                 logger.debug("cleanup | échec suppression du FIFO (ignoré)")
+        logger.debug("_cleanup() retourne | nettoyage terminé")
 
 
 # --------------------------------------------------------------------------- #
@@ -3341,14 +3639,17 @@ class UninstallThread(threading.Thread):
             on_done: callback optionnel `(success: bool, message: str) -> None`,
                 appelé en fin de thread (à invoquer depuis l'UI via GLib.idle_add).
         """
+        logger.debug("UninstallThread.__init__() appelée | {}", cfg.switch_ip)
         super().__init__(name="uninstall-feature", daemon=True)
         self.cfg = cfg
         self.state = state
         self.remove_bin_from_flash = remove_bin_from_flash
         self.on_done = on_done
+        logger.debug("UninstallThread.__init__() retourne | thread prêt")
 
     def run(self) -> None:
         """Point d'entrée du thread : exécute la séquence de désinstallation."""
+        logger.debug("UninstallThread.run() appelée")
         try:
             conn = connect_switch(self.cfg)
             try:
@@ -3356,6 +3657,7 @@ class UninstallThread(threading.Thread):
                 version_output = conn.send_command("display version")
                 model = self.cfg.model or self.state.model or detect_model(version_output)
                 if not model or model not in MODEL_PROFILES:
+                    logger.error("UninstallThread.run() : modèle non déterminé")
                     raise RuntimeError("Modèle non déterminé, impossible de savoir s'il y a une feature à retirer")
 
                 profile = MODEL_PROFILES[model]
@@ -3364,6 +3666,7 @@ class UninstallThread(threading.Thread):
                     logger.info("uninstall | {msg}", msg=message)
                     delete_remote_all_file_capture(conn, self.cfg.capture_prefix)
                     self._finish(True, message)
+                    logger.debug("UninstallThread.run() retourne | rien à désinstaller")
                     return
 
                 filename = self.cfg.feature_filename
@@ -3382,6 +3685,7 @@ class UninstallThread(threading.Thread):
                         message = "Aucune feature packet-capture active trouvée sur ce slot"
                         logger.info("uninstall | {msg}", msg=message)
                         self._finish(True, message)
+                        logger.debug("UninstallThread.run() retourne | feature introuvable")
                         return
                     filename = match.group(1)
 
@@ -3409,9 +3713,11 @@ class UninstallThread(threading.Thread):
                 self._finish(True, f"Feature {filename} désinstallée sur le slot {self.cfg.slot}")
             finally:
                 conn.disconnect()
+                logger.debug("UninstallThread.run() retourne | session fermée")
         except Exception as exc:  # noqa: BLE001
             logger.exception("uninstall | échec")
             self._finish(False, str(exc))
+            logger.debug("UninstallThread.run() retourne | échec signalé")
 
     def _finish(self, success: bool, message: str) -> None:
         """Invoque le callback de fin, s'il a été fourni.
@@ -3420,8 +3726,10 @@ class UninstallThread(threading.Thread):
             success: True si la désinstallation s'est bien déroulée.
             message: message à afficher à l'utilisateur.
         """
+        logger.debug("_finish() appelée | succès={}", success)
         if self.on_done:
             self.on_done(success, message)
+        logger.debug("_finish() retourne | callback invoqué")
 
 
 # --------------------------------------------------------------------------- #
@@ -3563,22 +3871,30 @@ class MirrorConfig:
 
     def __post_init__(self) -> None:
         """Normalise et valide les champs obligatoires selon `mode`/`filter_mode`."""
+        logger.debug("MirrorConfig.__post_init__() appelée | mode={}", self.mode)
         if not self.ssh_password:
             self.ssh_password = os.environ.get("SWITCH_SSH_PASSWORD", "")
         missing = [n for n, v in (("switch_ip", self.switch_ip), ("ssh_user", self.ssh_user)) if not v]
         if missing:
+            logger.error("MirrorConfig.__post_init__() : champs manquants : {}", missing)
             raise ValueError(f"Champs obligatoires manquants : {', '.join(missing)}")
         if not self.ssh_password:
+            logger.error("MirrorConfig.__post_init__() : mot de passe SSH manquant")
             raise ValueError("Mot de passe SSH manquant (champ 'ssh_password' ou SWITCH_SSH_PASSWORD)")
         if self.mode not in ("local", "gre", "vxlan"):
+            logger.error("MirrorConfig.__post_init__() : mode invalide {!r}", self.mode)
             raise ValueError(f"mode invalide : {self.mode!r} (choix : local, gre, vxlan)")
         if self.filter_mode not in ("port", "acl"):
+            logger.error("MirrorConfig.__post_init__() : filter_mode invalide {!r}", self.filter_mode)
             raise ValueError(f"filter_mode invalide : {self.filter_mode!r} (choix : port, acl)")
         if self.direction not in ("both", "inbound", "outbound"):
+            logger.error("MirrorConfig.__post_init__() : direction invalide {!r}", self.direction)
             raise ValueError(f"direction invalide : {self.direction!r} (choix : both, inbound, outbound)")
         if not self.source_interfaces:
+            logger.error("MirrorConfig.__post_init__() : interface source manquante")
             raise ValueError("au moins une interface source (source_interfaces) est requise")
         if self.mode == "local" and not self.monitor_interface:
+            logger.error("MirrorConfig.__post_init__() : monitor_interface requis en local")
             raise ValueError("monitor_interface requis en mode 'local'")
         if self.mode == "gre":
             gre_required = [
@@ -3593,9 +3909,11 @@ class MirrorConfig:
                 gre_required.append(("tunnel_ip", self.tunnel_ip))
             gre_missing = [n for n, v in gre_required if not v]
             if gre_missing:
+                logger.error("MirrorConfig.__post_init__() : champs gre manquants : {}", gre_missing)
                 raise ValueError(f"champs requis en mode 'gre' manquants : {', '.join(gre_missing)}")
         if self.mode == "vxlan":
             if self.filter_mode == "acl":
+                logger.error("MirrorConfig.__post_init__() : vxlan+acl non combinable")
                 raise ValueError("mode 'vxlan' non combinable avec filter_mode 'acl' pour l'instant")
             vxlan_required = [
                 ("remote_probe_vlan", self.remote_probe_vlan),
@@ -3607,17 +3925,22 @@ class MirrorConfig:
             ]
             vxlan_missing = [n for n, v in vxlan_required if v is None or v == ""]
             if vxlan_missing:
+                logger.error("MirrorConfig.__post_init__() : champs vxlan manquants : {}", vxlan_missing)
                 raise ValueError(f"champs requis en mode 'vxlan' manquants : {', '.join(vxlan_missing)}")
             if not (1 <= self.remote_probe_vlan <= 4094):
+                logger.error("MirrorConfig.__post_init__() : remote_probe_vlan invalide")
                 raise ValueError(f"remote_probe_vlan invalide : {self.remote_probe_vlan!r} (1-4094)")
             if not (0 <= self.vxlan_vni <= 16777215):
+                logger.error("MirrorConfig.__post_init__() : vxlan_vni invalide")
                 raise ValueError(f"vxlan_vni invalide : {self.vxlan_vni!r} (0-16777215)")
             if self.service_instance_id is None:
                 self.service_instance_id = self.group_id
         if self.filter_mode == "acl":
             if not self.acl_rules:
+                logger.error("MirrorConfig.__post_init__() : règle ACL manquante")
                 raise ValueError("au moins une règle ACL (acl_rules) est requise en filter_mode 'acl'")
             if not (3000 <= self.acl_number <= 3999) or self.acl_number in (3998, 3999):
+                logger.error("MirrorConfig.__post_init__() : acl_number invalide {}", self.acl_number)
                 raise ValueError(
                     f"acl_number invalide : {self.acl_number!r} (ACL avancée "
                     "Comware : 3000-3999, 3998/3999 exclus — réservés cluster management)"
@@ -3628,6 +3951,7 @@ class MirrorConfig:
                 self.behavior_name = f"SWCAP_BEH_{self.group_id}"
             if self.qos_policy_name is None:
                 self.qos_policy_name = f"SWCAP_POL_{self.group_id}"
+        logger.debug("MirrorConfig.__post_init__() retourne | config validée")
 
 
 def configure_local_mirror(conn, cfg: MirrorConfig) -> None:
@@ -3637,6 +3961,7 @@ def configure_local_mirror(conn, cfg: MirrorConfig) -> None:
         conn: session netmiko déjà connectée.
         cfg: paramètres de mirroring (`mode == "local"`).
     """
+    logger.debug("configure_local_mirror() appelée | groupe={}", cfg.group_id)
     ports = " ".join(cfg.source_interfaces)
     conn.config_mode()
     commands = [
@@ -3675,6 +4000,7 @@ def configure_gre_mirror(conn, cfg: MirrorConfig) -> None:
         conn: session netmiko déjà connectée.
         cfg: paramètres de mirroring (`mode == "gre"`).
     """
+    logger.debug("configure_gre_mirror() appelée | groupe={}", cfg.group_id)
     conn.config_mode()
 
     if cfg.loopback_interface:
@@ -3744,6 +4070,7 @@ def configure_vxlan_mirror(conn, cfg: MirrorConfig) -> None:
         conn: session netmiko déjà connectée.
         cfg: paramètres de mirroring (`mode == "vxlan"`).
     """
+    logger.debug("configure_vxlan_mirror() appelée | groupe={}", cfg.group_id)
     conn.config_mode()
 
     vlan_commands = [f"vlan {cfg.remote_probe_vlan}", "quit"]
@@ -3826,6 +4153,7 @@ def configure_acl_mirror(conn, cfg: MirrorConfig) -> None:
         conn: session netmiko déjà connectée.
         cfg: paramètres de mirroring (`filter_mode == "acl"`).
     """
+    logger.debug("configure_acl_mirror() appelée | groupe={}", cfg.group_id)
     conn.config_mode()
 
     acl_commands = [f"acl advanced {cfg.acl_number}", *cfg.acl_rules, "quit"]
@@ -3897,6 +4225,7 @@ def teardown_acl_mirror(conn, cfg: MirrorConfig) -> None:
             `source_interfaces`/`direction`/`acl_number`/`classifier_name`/
             `behavior_name`/`qos_policy_name` qu'à la configuration).
     """
+    logger.debug("teardown_acl_mirror() appelée | groupe={}", cfg.group_id)
     conn.config_mode()
 
     directions = ("inbound", "outbound") if cfg.direction == "both" else (cfg.direction,)
@@ -3946,6 +4275,7 @@ def teardown_vxlan_mirror(conn, cfg: MirrorConfig) -> None:
             `tunnel_id`/`vsi_name`/`remote_probe_vlan` qu'à la
             configuration).
     """
+    logger.debug("teardown_vxlan_mirror() appelée | groupe={}", cfg.group_id)
     conn.config_mode()
 
     undo_mirror_cmd = f"undo mirroring-group {cfg.group_id}"
@@ -3999,6 +4329,7 @@ def teardown_mirror(conn, cfg: MirrorConfig) -> None:
         cfg: paramètres identifiant le groupe/tunnel à retirer (mêmes
             `group_id`/`tunnel_id`/`mode` qu'à la configuration).
     """
+    logger.debug("teardown_mirror() appelée | groupe={}", cfg.group_id)
     conn.config_mode()
     undo_mirror_cmd = f"undo mirroring-group {cfg.group_id}"
     logger.debug("teardown_mirror | {cmd}", cmd=undo_mirror_cmd)
@@ -4032,13 +4363,16 @@ class MirrorThread(threading.Thread):
             teardown: si True, retire la configuration au lieu de la pousser.
             on_done: callback optionnel `(success: bool, message: str) -> None`.
         """
+        logger.debug("MirrorThread.__init__() appelée | {}", mirror_cfg.switch_ip)
         super().__init__(name="mirror-config", daemon=True)
         self.mirror_cfg = mirror_cfg
         self.teardown = teardown
         self.on_done = on_done
+        logger.debug("MirrorThread.__init__() retourne | thread prêt")
 
     def run(self) -> None:
         """Point d'entrée du thread : connexion, action, déconnexion."""
+        logger.debug("MirrorThread.run() appelée | teardown={}", self.teardown)
         device = {
             "device_type": "hp_comware",
             "host": self.mirror_cfg.switch_ip,
@@ -4048,6 +4382,7 @@ class MirrorThread(threading.Thread):
         }
         if ConnectHandler is None:
             self._finish(False, "netmiko manquant : pip install netmiko")
+            logger.debug("MirrorThread.run() retourne | netmiko manquant")
             return
         try:
             conn = ConnectHandler(**device)
@@ -4099,9 +4434,11 @@ class MirrorThread(threading.Thread):
                     )
             finally:
                 conn.disconnect()
+                logger.debug("MirrorThread.run() retourne | session fermée")
         except Exception as exc:  # noqa: BLE001
             logger.exception("mirror | échec")
             self._finish(False, str(exc))
+            logger.debug("MirrorThread.run() retourne | échec signalé")
 
     def _finish(self, success: bool, message: str) -> None:
         """Invoque le callback de fin, s'il a été fourni.
@@ -4110,5 +4447,7 @@ class MirrorThread(threading.Thread):
             success: True si l'opération s'est bien déroulée.
             message: message à afficher à l'utilisateur.
         """
+        logger.debug("_finish() appelée | succès={}", success)
         if self.on_done:
             self.on_done(success, message)
+        logger.debug("_finish() retourne | callback invoqué")

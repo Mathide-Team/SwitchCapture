@@ -78,6 +78,7 @@ def _configure_logging(verbose: bool) -> None:
     Args:
         verbose: si True, niveau DEBUG sur la console ; sinon INFO.
     """
+    logger.debug("_configure_logging() appelée | verbose={}", verbose)
     logger.remove()
     logger.add(
         sys.stderr,
@@ -86,6 +87,7 @@ def _configure_logging(verbose: bool) -> None:
         colorize=True,
     )
     logger.add("switch_capture.log", level="DEBUG", rotation="5 MB", retention="10 days", encoding="utf-8")
+    logger.debug("_configure_logging() retourne | journaux configurés")
 
 
 def load_yaml(path: str) -> dict:
@@ -97,10 +99,13 @@ def load_yaml(path: str) -> dict:
     Returns:
         Le contenu parsé, ou un dict vide si le fichier est vide.
     """
+    logger.debug("load_yaml() appelée | chemin={}", path)
     import yaml
 
     with open(path) as f:
-        return yaml.safe_load(f) or {}
+        contenu = yaml.safe_load(f) or {}
+    logger.debug("load_yaml() retourne | {} clé(s)", len(contenu))
+    return contenu
 
 
 def _resolve_keepass_master_password() -> str | None:
@@ -138,16 +143,20 @@ def _maybe_fill_password_from_keyring(
             connu (résolu par l'appelant depuis `--keepass-keyfile`/le YAML,
             même principe que `keepass_path`) ou `None`.
     """
+    logger.debug("_maybe_fill_password_from_keyring() appelée | keepass={}", keepass_path is not None)
     if raw.get("ssh_password") or os.environ.get("SWITCH_SSH_PASSWORD"):
+        logger.debug("_maybe_fill_password_from_keyring() retourne | mot de passe déjà fourni")
         return
     switch_ip = raw.get("switch_ip")
     ssh_user = raw.get("ssh_user")
     if not switch_ip or not ssh_user:
+        logger.debug("_maybe_fill_password_from_keyring() retourne | switch/utilisateur inconnus")
         return
     remembered = load_ssh_password_from_keyring(switch_ip, ssh_user)
     if remembered:
         raw["ssh_password"] = remembered
         logger.debug("mot de passe SSH chargé depuis le trousseau système | {}@{}", ssh_user, switch_ip)
+        logger.debug("_maybe_fill_password_from_keyring() retourne | trousseau utilisé")
         return
     remembered = load_ssh_password_from_keepass(
         switch_ip, ssh_user, keepass_path, _resolve_keepass_master_password(), keepass_keyfile
@@ -155,6 +164,10 @@ def _maybe_fill_password_from_keyring(
     if remembered:
         raw["ssh_password"] = remembered
         logger.debug("mot de passe SSH chargé depuis le fichier KeePass (repli) | {}@{}", ssh_user, switch_ip)
+    logger.debug(
+        "_maybe_fill_password_from_keyring() retourne | {}",
+        "repli KeePass utilisé" if remembered else "aucun mot de passe mémorisé",
+    )
 
 
 def _apply_password_keyring_actions(args: argparse.Namespace, switch_ip: str, ssh_user: str, ssh_password: str) -> None:
@@ -178,6 +191,7 @@ def _apply_password_keyring_actions(args: argparse.Namespace, switch_ip: str, ss
     `--forget-password` est idempotent par construction. Les deux options
     sont mutuellement exclusives au niveau argparse.
     """
+    logger.debug("_apply_password_keyring_actions() appelée | {}@{}", ssh_user, switch_ip)
     keepass_path = getattr(args, "keepass_path", None)
     keepass_keyfile = getattr(args, "keepass_keyfile", None)
     keepass_master_password = _resolve_keepass_master_password()
@@ -209,6 +223,7 @@ def _apply_password_keyring_actions(args: argparse.Namespace, switch_ip: str, ss
                 "(module 'keyring' absent — fournissez --keepass-path et SWITCH_CAPTURE_KEEPASS_PASSWORD "
                 "pour utiliser le repli)"
             )
+    logger.debug("_apply_password_keyring_actions() retourne | actions appliquées")
 
 
 def build_config(args: argparse.Namespace) -> Config:
@@ -225,6 +240,7 @@ def build_config(args: argparse.Namespace) -> Config:
         ValueError: relayée depuis Config.__post_init__ si un champ
             obligatoire manque ou si une valeur est invalide.
     """
+    logger.debug("build_config() appelée | config={}", getattr(args, "config", None))
     raw: dict = {}
     if getattr(args, "config", None):
         raw = load_yaml(args.config)
@@ -243,7 +259,9 @@ def build_config(args: argparse.Namespace) -> Config:
     keepass_keyfile = raw.get("keepass_keyfile") or getattr(args, "keepass_keyfile", None)
     raw = {k: v for k, v in raw.items() if k in _CONFIG_FIELDS}
     _maybe_fill_password_from_keyring(raw, keepass_path=keepass_path, keepass_keyfile=keepass_keyfile)
-    return Config(**raw)
+    config = Config(**raw)
+    logger.debug("build_config() retourne | config validée")
+    return config
 
 
 def build_inspect_config(args: argparse.Namespace) -> InspectConfig:
@@ -264,6 +282,7 @@ def build_inspect_config(args: argparse.Namespace) -> InspectConfig:
         ValueError: relayée depuis InspectConfig.__post_init__ si un champ
             obligatoire manque ou si une valeur est invalide.
     """
+    logger.debug("build_inspect_config() appelée | config={}", getattr(args, "config", None))
     raw: dict = {}
     if getattr(args, "config", None):
         raw = load_yaml(args.config)
@@ -277,7 +296,9 @@ def build_inspect_config(args: argparse.Namespace) -> InspectConfig:
     keepass_keyfile = raw.get("keepass_keyfile") or getattr(args, "keepass_keyfile", None)
     raw = {k: v for k, v in raw.items() if k in _INSPECT_CONFIG_FIELDS}
     _maybe_fill_password_from_keyring(raw, keepass_path=keepass_path, keepass_keyfile=keepass_keyfile)
-    return InspectConfig(**raw)
+    config = InspectConfig(**raw)
+    logger.debug("build_inspect_config() retourne | config d'inspection validée")
+    return config
 
 
 def _add_common_config_args(parser: argparse.ArgumentParser) -> None:
@@ -286,6 +307,7 @@ def _add_common_config_args(parser: argparse.ArgumentParser) -> None:
     Args:
         parser: sous-parseur argparse (capture ou uninstall) à compléter.
     """
+    logger.debug("_add_common_config_args() appelée")
     parser.add_argument("--config", help=_("Chemin d'un fichier YAML de base (surchargé par les autres options)"))
 
     parser.add_argument("--switch-ip", dest="switch_ip")
@@ -493,6 +515,7 @@ def _add_common_config_args(parser: argparse.ArgumentParser) -> None:
             "défaut). Sans effet si --archive-dir n'est pas fourni"
         ),
     )
+    logger.debug("_add_common_config_args() retourne | arguments communs ajoutés")
 
 
 def _default_feature_bin_dir() -> str:
@@ -503,8 +526,11 @@ def _default_feature_bin_dir() -> str:
         `.deb`/`.rpm`/`install.sh`), sinon `./feature-bin` (usage dev,
         lancé depuis un clone du dépôt).
     """
+    logger.debug("_default_feature_bin_dir() appelée")
     if Path(DEFAULT_SYSTEM_FEATURE_BIN_DIR).is_dir():
+        logger.debug("_default_feature_bin_dir() retourne | dossier système")
         return DEFAULT_SYSTEM_FEATURE_BIN_DIR
+    logger.debug("_default_feature_bin_dir() retourne | dossier dev local")
     return "./feature-bin"
 
 
@@ -514,6 +540,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     Returns:
         Le parseur configuré (capture / uninstall / import-bin).
     """
+    logger.debug("build_arg_parser() appelée")
     parser = argparse.ArgumentParser(
         prog="switch-capture",
         description=_("Orchestrateur de capture packet-capture pour switches HPE Comware"),
@@ -797,6 +824,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         ),
     )
 
+    logger.debug("build_arg_parser() retourne | parseur construit")
     return parser
 
 
@@ -809,6 +837,7 @@ def run_capture(cfg: Config) -> int:
     Returns:
         Code de sortie du processus (0 si arrêt propre, 1 si erreur).
     """
+    logger.debug("run_capture() appelée | {} (mode {})", cfg.switch_ip, cfg.output_mode)
     state = SharedState()
     t1 = SetupAndCaptureThread(cfg, state)
     # En mode "rpcap", Wireshark se connecte directement au switch en
@@ -817,8 +846,10 @@ def run_capture(cfg: Config) -> int:
     t2 = CaptureRotationThread(cfg, state) if cfg.output_mode != "rpcap" else None
 
     def handle_sigint(signum, frame):
+        logger.debug("handle_sigint() appelée | signal={}", signum)
         logger.info("main | Ctrl+C reçu, arrêt en cours ...")
         state.stop_event.set()
+        logger.debug("handle_sigint() retourne | arrêt demandé")
 
     signal.signal(signal.SIGINT, handle_sigint)
 
@@ -830,7 +861,9 @@ def run_capture(cfg: Config) -> int:
         t2.join()
 
     logger.info("main | terminé")
-    return 0 if not state.stop_event.is_set() or state.capture_started.is_set() else 1
+    code = 0 if not state.stop_event.is_set() or state.capture_started.is_set() else 1
+    logger.debug("run_capture() retourne | {}", code)
+    return code
 
 
 def run_uninstall(cfg: Config, remove_bin_from_flash: bool, confirm_ip: bool = False) -> int:
@@ -848,24 +881,29 @@ def run_uninstall(cfg: Config, remove_bin_from_flash: bool, confirm_ip: bool = F
         Code de sortie du processus (0 si succès, 1 si échec ou
         confirmation d'IP manquante/incorrecte).
     """
+    logger.debug("run_uninstall() appelée | remove_bin={}", remove_bin_from_flash)
     if confirm_ip:
         try:
             typed = input(f"Retapez l'IP du switch pour confirmer la désinstallation ({cfg.switch_ip}) : ")
-        except EOFError:
+        except EOFError as exc:
+            logger.debug("uninstall | confirmation IP non interactive : {}", exc)
             typed = ""
         if not confirm_ip_matches(typed, cfg.switch_ip):
             logger.error(
                 "uninstall | IP non confirmée (attendu : {ip}) — désinstallation annulée avant toute connexion",
                 ip=cfg.switch_ip,
             )
+            logger.debug("run_uninstall() retourne | 1 (IP non confirmée)")
             return 1
 
     state = SharedState()
     result: dict[str, object] = {}
 
     def on_done(success: bool, message: str) -> None:
+        logger.debug("on_done() appelée | succès={}", success)
         result["success"] = success
         result["message"] = message
+        logger.debug("on_done() retourne | résultat noté")
 
     thread = UninstallThread(cfg, state, remove_bin_from_flash, on_done)
     thread.run()  # exécution synchrone volontaire : un seul run() en CLI
@@ -876,7 +914,9 @@ def run_uninstall(cfg: Config, remove_bin_from_flash: bool, confirm_ip: bool = F
         logger.info("uninstall | {msg}", msg=message)
     else:
         logger.error("uninstall | {msg}", msg=message)
-    return 0 if success else 1
+    code = 0 if success else 1
+    logger.debug("run_uninstall() retourne | {}", code)
+    return code
 
 
 def run_import_bin(source_dir: str, feature_bin_dir: str | None) -> int:
@@ -899,9 +939,11 @@ def run_import_bin(source_dir: str, feature_bin_dir: str | None) -> int:
         Code de sortie du processus (0 si succès, 1 si le dossier source
         est introuvable).
     """
+    logger.debug("run_import_bin() appelée | source={}", source_dir)
     src = Path(source_dir)
     if not src.is_dir():
         logger.error("import-bin | dossier source introuvable : {src}", src=src)
+        logger.debug("run_import_bin() retourne | 1 (source absente)")
         return 1
 
     dst = Path(feature_bin_dir or _default_feature_bin_dir())
@@ -922,6 +964,7 @@ def run_import_bin(source_dir: str, feature_bin_dir: str | None) -> int:
             "import-bin | aucun .bin trouvé après import — vérifiez la structure "
             "<modèle>/<version>/*.bin (voir README-feature-bin.md)"
         )
+    logger.debug("run_import_bin() retourne | 0")
     return 0
 
 
@@ -935,19 +978,23 @@ def run_mirror(args: argparse.Namespace) -> int:
         Code de sortie du processus (0 si succès, 1 si échec, 2 si
         paramètres invalides).
     """
+    logger.debug("run_mirror() appelée")
     raw = {key: getattr(args, key, None) for key in _MIRROR_CONFIG_FIELDS}
     raw = {k: v for k, v in raw.items() if v is not None}
     try:
         mirror_cfg = MirrorConfig(**raw)
     except ValueError as exc:
         logger.error("mirror | configuration invalide : {err}", err=exc)
+        logger.debug("run_mirror() retourne | 2 (config invalide)")
         return 2
 
     result: dict[str, object] = {}
 
     def on_done(success: bool, message: str) -> None:
+        logger.debug("on_done() appelée | succès={}", success)
         result["success"] = success
         result["message"] = message
+        logger.debug("on_done() retourne | résultat noté")
 
     thread = MirrorThread(mirror_cfg, teardown=bool(getattr(args, "teardown", False)), on_done=on_done)
     thread.run()  # exécution synchrone volontaire, comme run_uninstall
@@ -958,7 +1005,9 @@ def run_mirror(args: argparse.Namespace) -> int:
         logger.info("mirror | {msg}", msg=message)
     else:
         logger.error("mirror | {msg}", msg=message)
-    return 0 if success else 1
+    code = 0 if success else 1
+    logger.debug("run_mirror() retourne | {}", code)
+    return code
 
 
 def run_inspect(args: argparse.Namespace) -> int:
@@ -971,10 +1020,12 @@ def run_inspect(args: argparse.Namespace) -> int:
         Code de sortie du processus (0 si succès, 1 si échec de connexion/
         commande, 2 si configuration invalide).
     """
+    logger.debug("run_inspect() appelée")
     try:
         cfg = build_inspect_config(args)
     except ValueError as exc:
         logger.error("inspect | configuration invalide : {err}", err=exc)
+        logger.debug("run_inspect() retourne | 2 (config invalide)")
         return 2
 
     _apply_password_keyring_actions(args, cfg.switch_ip, cfg.ssh_user, cfg.ssh_password)
@@ -983,9 +1034,11 @@ def run_inspect(args: argparse.Namespace) -> int:
         report = inspect_switch(cfg)
     except Exception as exc:  # noqa: BLE001
         logger.error("inspect | échec de connexion/inspection : {err}", err=exc)
+        logger.debug("run_inspect() retourne | 1 (échec d'inspection)")
         return 1
 
     print(format_inspect_report(cfg.switch_ip, cfg.transfer_mode, report))
+    logger.debug("run_inspect() retourne | 0")
     return 0
 
 
@@ -1003,6 +1056,7 @@ def run_analyze_pacing(args: argparse.Namespace) -> int:
         Code de sortie du processus (0 si succès, 1 si le fichier est
         invalide ou ne contient aucune trame).
     """
+    logger.debug("run_analyze_pacing() appelée | fichier={}", args.pcap_file)
     pcap_file = Path(args.pcap_file)
     candidate_max_gaps = args.candidate_max_gaps or None  # None -> défaut de analyze_pacing_gaps
     try:
@@ -1012,9 +1066,11 @@ def run_analyze_pacing(args: argparse.Namespace) -> int:
             report = analyze_pacing_gaps(pcap_file)
     except (ValueError, OSError) as exc:
         logger.error("analyze-pacing | {err}", err=exc)
+        logger.debug("run_analyze_pacing() retourne | 1 (fichier invalide)")
         return 1
 
     print(format_pacing_analysis_report(pcap_file, report))
+    logger.debug("run_analyze_pacing() retourne | 0")
     return 0
 
 
@@ -1029,37 +1085,52 @@ def main(argv: list[str] | None = None) -> int:
     Returns:
         Code de sortie du processus.
     """
+    logger.debug("main() appelée | argv={}", argv)
     parser = build_arg_parser()
     args = parser.parse_args(argv)
     _configure_logging(args.verbose)
 
     if args.action == "import-bin":
-        return run_import_bin(args.source_dir, args.feature_bin_dir)
+        code = run_import_bin(args.source_dir, args.feature_bin_dir)
+        logger.debug("main() retourne | {} (import-bin)", code)
+        return code
     if args.action == "mirror":
-        return run_mirror(args)
+        code = run_mirror(args)
+        logger.debug("main() retourne | {} (mirror)", code)
+        return code
     if args.action == "inspect":
-        return run_inspect(args)
+        code = run_inspect(args)
+        logger.debug("main() retourne | {} (inspect)", code)
+        return code
     if args.action == "analyze-pacing":
-        return run_analyze_pacing(args)
+        code = run_analyze_pacing(args)
+        logger.debug("main() retourne | {} (analyze-pacing)", code)
+        return code
 
     try:
         cfg = build_config(args)
     except ValueError as exc:
         parser.error(str(exc))
+        logger.debug("main() retourne | 2 (config invalide)")
         return 2
 
     _apply_password_keyring_actions(args, cfg.switch_ip, cfg.ssh_user, cfg.ssh_password)
 
     if args.action == "capture":
-        return run_capture(cfg)
+        code = run_capture(cfg)
+        logger.debug("main() retourne | {} (capture)", code)
+        return code
     if args.action == "uninstall":
-        return run_uninstall(
+        code = run_uninstall(
             cfg,
             getattr(args, "remove_bin_from_flash", False),
             getattr(args, "confirm_ip", False),
         )
+        logger.debug("main() retourne | {} (uninstall)", code)
+        return code
 
     parser.error(f"action inconnue : {args.action}")
+    logger.debug("main() retourne | 2 (action inconnue)")
     return 2
 
 
