@@ -179,10 +179,12 @@ def _register_app_icon() -> None:
     on se contente de l'appel à set_default_icon_name, sans effet visible
     tant qu'aucune fenêtre ne s'ouvre, mais inoffensif.
     """
+    logger.debug("_register_app_icon() appelée")
     display = Gdk.Display.get_default()
     if display is not None and _ICON_SEARCH_ROOT.is_dir():
         Gtk.IconTheme.get_for_display(display).add_search_path(str(_ICON_SEARCH_ROOT))
     Gtk.Window.set_default_icon_name(APP_ID)
+    logger.debug("_register_app_icon() retourne | icône enregistrée")
 
 
 def _queue_sink(message) -> None:
@@ -208,12 +210,17 @@ def format_size(num_bytes: int) -> str:
     Returns:
         La taille formatée, ex: "3.4 Mo".
     """
+    logger.trace("format_size() appelée | {} octet(s)", num_bytes)
     size = float(num_bytes)
     for unit in ("o", "Ko", "Mo", "Go"):
         if size < 1024:
-            return f"{size:.0f} {unit}" if unit == "o" else f"{size:.1f} {unit}"
+            texte = f"{size:.0f} {unit}" if unit == "o" else f"{size:.1f} {unit}"
+            logger.trace("format_size() retourne | {}", texte)
+            return texte
         size /= 1024
-    return f"{size:.1f} To"
+    texte = f"{size:.1f} To"
+    logger.trace("format_size() retourne | {}", texte)
+    return texte
 
 
 # ---------------------------------------------------------------------- #
@@ -245,23 +252,28 @@ def _choose_path(parent: Gtk.Window, title: str, select_folder: bool, on_path) -
         on_path: appelée avec le chemin local choisi ; jamais appelée en cas
             d'annulation ou de fichier sans chemin local.
     """
+    logger.debug("_choose_path() appelée | titre={}", title)
     if _HAS_FILE_DIALOG:
         dialog = Gtk.FileDialog(title=title, modal=True)
 
         def on_done(dlg: Gtk.FileDialog, result: Gio.AsyncResult) -> None:
+            logger.debug("on_done() appelée")
             try:
                 gfile = dlg.select_folder_finish(result) if select_folder else dlg.open_finish(result)
             except GLib.Error as exc:  # annulation (Gtk.DialogError.DISMISSED) ou échec
                 logger.debug("sélecteur « {} » | fermé sans choix : {}", title, exc.message)
+                logger.debug("on_done() retourne | sans choix")
                 return
             path = gfile.get_path() if gfile else None
             if path:
                 on_path(path)
+            logger.debug("on_done() retourne | chemin transmis")
 
         if select_folder:
             dialog.select_folder(parent, None, on_done)
         else:
             dialog.open(parent, None, on_done)
+        logger.debug("_choose_path() retourne | dialogue moderne affiché")
         return
 
     native = Gtk.FileChooserNative(
@@ -271,20 +283,25 @@ def _choose_path(parent: Gtk.Window, title: str, select_folder: bool, on_path) -
     )
 
     def on_response(dlg: Gtk.FileChooserNative, response: int) -> None:
+        logger.debug("on_response() appelée | réponse={}", response)
         gfile = dlg.get_file() if response == Gtk.ResponseType.ACCEPT else None
         dlg.destroy()
         path = gfile.get_path() if gfile else None
         if path:
             on_path(path)
+        logger.debug("on_response() retourne | sélection traitée")
 
     native.connect("response", on_response)
     native.show()
+    logger.debug("_choose_path() retourne | sélecteur natif affiché")
 
 
 def _show_message(parent: Gtk.Window, title: str, body: str) -> None:
     """Affiche un message d'information modal avec un seul bouton de fermeture."""
+    logger.debug("_show_message() appelée | titre={}", title)
     if _HAS_ALERT_DIALOG:
         Gtk.AlertDialog(message=title, detail=body, modal=True).show(parent)
+        logger.debug("_show_message() retourne | dialogue moderne affiché")
         return
     dialog = Gtk.MessageDialog(
         transient_for=parent,
@@ -296,6 +313,7 @@ def _show_message(parent: Gtk.Window, title: str, body: str) -> None:
     )
     dialog.connect("response", lambda d, _r: d.destroy())
     dialog.show()
+    logger.debug("_show_message() retourne | dialogue affiché")
 
 
 def _open_form_dialog(
@@ -317,6 +335,7 @@ def _open_form_dialog(
     Returns:
         Le bouton d'acceptation, pour que l'appelant règle sa sensibilité.
     """
+    logger.debug("_open_form_dialog() appelée | titre={}", heading)
     win = Gtk.Window(transient_for=parent, modal=True, title=heading, resizable=False, default_width=420)
     box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
     for side in ("top", "bottom", "start", "end"):
@@ -340,17 +359,22 @@ def _open_form_dialog(
     answered = False
 
     def finish(accepted: bool) -> None:
+        logger.debug("finish() appelée | accepté={}", accepted)
         nonlocal answered
         if answered:
+            logger.debug("finish() retourne | déjà répondu")
             return
         answered = True
         try:
             on_response(accepted)
         finally:
             win.destroy()
+        logger.debug("finish() retourne | réponse transmise")
 
     def on_close_request(_win: Gtk.Window) -> bool:
+        logger.debug("on_close_request() appelée")
         finish(False)
+        logger.debug("on_close_request() retourne | fermeture demandée")
         return True  # destroy() déjà fait par finish
 
     btn_cancel.connect("clicked", lambda _b: finish(False))
@@ -365,6 +389,7 @@ def _open_form_dialog(
     )
     win.add_controller(escape)
     win.present()
+    logger.debug("_open_form_dialog() retourne | dialogue affiché")
     return btn_accept
 
 
@@ -385,6 +410,7 @@ class CaptureSession:
         Args:
             cfg: configuration de capture pour ce point (switch/interface).
         """
+        logger.debug("CaptureSession.__init__() appelée | {}", cfg.switch_ip)
         self.id = CaptureSession._next_id
         CaptureSession._next_id += 1
         self.cfg = cfg
@@ -394,18 +420,23 @@ class CaptureSession:
         self.install_status = "pending"  # pending | running | ok | failed
         self.install_error = ""
         self.capture_running = False
+        logger.debug("CaptureSession.__init__() retourne | session #{}", self.id)
 
     @property
     def label(self) -> str:
         """Étiquette lisible de la session pour les listes de l'UI."""
+        logger.trace("label() appelée | session #{}", self.id)
         base = self.cfg.capture_label or self.cfg.switch_ip
-        return f"#{self.id} {base} — {self.cfg.capture_interface} ({self.cfg.output_mode})"
+        texte = f"#{self.id} {base} — {self.cfg.capture_interface} ({self.cfg.output_mode})"
+        logger.trace("label() retourne | {}", texte)
+        return texte
 
 
 class CaptureWindow(Gtk.ApplicationWindow):
     """Fenêtre principale : 5 pages reflétant le cycle de vie multi-captures."""
 
     def __init__(self, app: Gtk.Application) -> None:
+        logger.debug("CaptureWindow.__init__() appelée")
         super().__init__(application=app, title=_("switch-capture — HPE Comware"))
         self.set_default_size(960, 780)
 
@@ -478,6 +509,7 @@ class CaptureWindow(Gtk.ApplicationWindow):
         self._refresh_sessions_list()
         self._refresh_install_list()
         self._refresh_start_list()
+        logger.debug("CaptureWindow.__init__() retourne | fenêtre construite")
 
     # ------------------------------------------------------------------ #
     # Préférences (menu hamburger — features.md, point 1)
@@ -491,18 +523,25 @@ class CaptureWindow(Gtk.ApplicationWindow):
         l'application — un avertissement est journalisé et les valeurs
         par défaut (DEFAULT_PREFERENCES) restent en place dans ce cas.
         """
+        logger.debug("_load_preferences() appelée")
         try:
-            return load_gui_preferences(DEFAULT_PREFS_CONFIG_PATH)
+            prefs = load_gui_preferences(DEFAULT_PREFS_CONFIG_PATH)
+            logger.debug("_load_preferences() retourne | {} préférence(s)", len(prefs))
+            return prefs
         except Exception as exc:  # YAML mal formé, permissions, etc.  # noqa: BLE001
             logger.warning(
                 "préférences GUI : lecture de {} impossible, valeurs par défaut conservées | {}",
                 DEFAULT_PREFS_CONFIG_PATH,
                 exc,
             )
+            logger.debug("_load_preferences() retourne | valeurs par défaut conservées")
             return {}
+        logger.debug("_load_preferences() retourne | fin de fonction")
 
     def _on_open_preferences(self, _action: Gio.SimpleAction, _param) -> None:
+        logger.debug("_on_open_preferences() appelée")
         self._open_preferences_window()
+        logger.debug("_on_open_preferences() retourne | fenêtre ouverte")
 
     def _save_preferences(self, *, slot: int, model: str | None, feature_bin_path: str, keepass_path: str) -> None:
         """Enregistre des préférences déjà lues (valeurs Python simples) et
@@ -518,6 +557,7 @@ class CaptureWindow(Gtk.ApplicationWindow):
                 `_show_dialog` plutôt que de la laisser remonter jusqu'à
                 GTK4).
         """
+        logger.debug("_save_preferences() appelée | slot={}", slot)
         to_save = {
             "slot": slot,
             "model": model,
@@ -529,6 +569,7 @@ class CaptureWindow(Gtk.ApplicationWindow):
         self._prefs["model"] = model
         self._prefs["feature_bin_path"] = feature_bin_path
         self._prefs["keepass_path"] = keepass_path
+        logger.debug("_save_preferences() retourne | préférences écrites")
 
     def _open_preferences_window(self) -> None:
         """Ouvre la fenêtre Préférences (ou refocalise celle déjà ouverte).
@@ -541,8 +582,10 @@ class CaptureWindow(Gtk.ApplicationWindow):
         (ré)ouverture) plutôt que capturés uniquement par fermeture,
         pour rester testables sans parcourir l'arbre de widgets.
         """
+        logger.debug("_open_preferences_window() appelée")
         if self._prefs_window is not None:
             self._prefs_window.present()
+            logger.debug("_open_preferences_window() retourne | déjà ouverte")
             return
 
         win = Gtk.Window(transient_for=self, modal=True, title=_("Préférences"))
@@ -641,6 +684,7 @@ class CaptureWindow(Gtk.ApplicationWindow):
         outer.append(btn_box)
 
         def on_save(_button: Gtk.Button) -> None:
+            logger.debug("on_save() appelée")
             model_idx = model_dropdown.get_selected()
             model_value = None if model_idx == 0 else model_options[model_idx]
             try:
@@ -653,29 +697,37 @@ class CaptureWindow(Gtk.ApplicationWindow):
             except Exception as exc:  # noqa: BLE001
                 logger.exception("préférences GUI | échec d'enregistrement")
                 self._show_dialog(_("Échec de l'enregistrement"), str(exc))
+                logger.debug("on_save() retourne | échec affiché")
                 return
             status_label.set_text(f"Enregistré dans {DEFAULT_PREFS_CONFIG_PATH}.")
+            logger.debug("on_save() retourne | enregistré")
 
         btn_save.connect("clicked", on_save)
 
         def on_close(_win: Gtk.Window) -> bool:
+            logger.debug("on_close() appelée")
             self._prefs_window = None
             self._prefs_entries = {}
+            logger.debug("on_close() retourne | fenêtre libérée")
             return False
 
         win.connect("close-request", on_close)
         self._prefs_window = win
         win.present()
+        logger.debug("_open_preferences_window() retourne | fenêtre créée")
 
     # ------------------------------------------------------------------ #
     # Helpers de construction de formulaire (génériques, réutilisés partout)
     # ------------------------------------------------------------------ #
     def _section(self, title: str) -> Gtk.Widget:
+        logger.trace("_section() appelée | titre={}", title)
         label = Gtk.Label(label=f"<b>{title}</b>", use_markup=True, xalign=0)
         label.set_margin_top(6)
+        logger.trace("_section() retourne | libellé créé")
         return label
 
     def _row(self, key: str, label_text: str, placeholder: str, is_password: bool = False) -> Gtk.Widget:
+        logger.trace("_row() appelée")
         box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         box.append(Gtk.Label(label=label_text, xalign=0, width_chars=28))
         entry = Gtk.PasswordEntry(show_peek_icon=True) if is_password else Gtk.Entry()
@@ -685,9 +737,11 @@ class CaptureWindow(Gtk.ApplicationWindow):
         box.append(entry)
         self._entries[key] = entry
         self._rows[key] = box
+        logger.trace("_row() retourne | ligne créée")
         return box
 
     def _row_spin(self, key: str, label_text: str, default: int, low: int, high: int) -> Gtk.Widget:
+        logger.trace("_row_spin() appelée")
         box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         box.append(Gtk.Label(label=label_text, xalign=0, width_chars=28))
         adjustment = Gtk.Adjustment(value=default, lower=low, upper=high, step_increment=1)
@@ -695,6 +749,7 @@ class CaptureWindow(Gtk.ApplicationWindow):
         box.append(spin)
         self._entries[key] = spin
         self._rows[key] = box
+        logger.trace("_row_spin() retourne | ligne créée")
         return box
 
     def _row_spin_float(
@@ -707,6 +762,7 @@ class CaptureWindow(Gtk.ApplicationWindow):
         step: float,
         digits: int,
     ) -> Gtk.Widget:
+        logger.trace("_row_spin_float() appelée")
         box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         box.append(Gtk.Label(label=label_text, xalign=0, width_chars=28))
         adjustment = Gtk.Adjustment(value=default, lower=low, upper=high, step_increment=step)
@@ -714,9 +770,11 @@ class CaptureWindow(Gtk.ApplicationWindow):
         box.append(spin)
         self._entries[key] = spin
         self._rows[key] = box
+        logger.trace("_row_spin_float() retourne | ligne créée")
         return box
 
     def _row_path(self, key: str, label_text: str, default: str, select_folder: bool) -> Gtk.Widget:
+        logger.trace("_row_path() appelée")
         box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         box.append(Gtk.Label(label=label_text, xalign=0, width_chars=28))
         entry = Gtk.Entry(placeholder_text=default, hexpand=True)
@@ -726,9 +784,11 @@ class CaptureWindow(Gtk.ApplicationWindow):
         box.append(browse)
         self._entries[key] = entry
         self._rows[key] = box
+        logger.trace("_row_path() retourne | ligne créée")
         return box
 
     def _row_check(self, key: str, label_text: str, default: bool) -> Gtk.Widget:
+        logger.trace("_row_check() appelée")
         box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         box.append(Gtk.Label(label="", xalign=0, width_chars=28))
         check = Gtk.CheckButton(label=label_text)
@@ -736,6 +796,7 @@ class CaptureWindow(Gtk.ApplicationWindow):
         box.append(check)
         self._entries[key] = check
         self._rows[key] = box
+        logger.trace("_row_check() retourne | ligne créée")
         return box
 
     def _row_remember_password(self) -> Gtk.Widget:
@@ -769,6 +830,7 @@ class CaptureWindow(Gtk.ApplicationWindow):
         `config.yaml` : il ne se ressaisit plus à chaque lancement,
         contrairement au mot de passe SSH lui-même.
         """
+        logger.debug("_row_remember_password() appelée")
         outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
 
         row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
@@ -806,6 +868,7 @@ class CaptureWindow(Gtk.ApplicationWindow):
                 focus.connect("leave", lambda _c: self._maybe_autofill_password())
                 self._entries[key].add_controller(focus)
 
+        logger.debug("_row_remember_password() retourne | ligne créée")
         return outer
 
     @staticmethod
@@ -817,6 +880,7 @@ class CaptureWindow(Gtk.ApplicationWindow):
         d'environnement `SWITCH_CAPTURE_KEEPASS_PASSWORD`, jamais stocké ni
         affiché par cet outil.
         """
+        logger.trace("_resolve_keepass_master_password() retourne | variable d'environnement lue")
         return os.environ.get("SWITCH_CAPTURE_KEEPASS_PASSWORD") or None
 
     def _maybe_autofill_password(self) -> None:
@@ -835,25 +899,30 @@ class CaptureWindow(Gtk.ApplicationWindow):
         `.kdbx` a été renseigné dans le champ `keepass_path` — même ordre
         de priorité que côté CLI.
         """
+        logger.debug("_maybe_autofill_password() appelée")
         switch_ip = self._entries["switch_ip"].get_text().strip()
         ssh_user = self._entries["ssh_user"].get_text().strip()
         password_entry = self._entries["ssh_password"]
         if not switch_ip or not ssh_user or password_entry.get_text():
+            logger.debug("_maybe_autofill_password() retourne | champs incomplets, rien à faire")
             return
 
         keepass_path = self._prefs.get("keepass_path") or None
         keepass_master_password = self._resolve_keepass_master_password()
 
         def worker() -> None:
+            logger.debug("worker() appelée | {}@{}", ssh_user, switch_ip)
             password = load_ssh_password_from_keyring(switch_ip, ssh_user)
             if not password:
                 password = load_ssh_password_from_keepass(switch_ip, ssh_user, keepass_path, keepass_master_password)
             if not password:
+                logger.debug("worker() retourne | aucun mot de passe mémorisé")
                 return
 
             def apply() -> None:
                 # Revérifie qu'aucune saisie n'a eu lieu entre-temps, et que les
                 # champs switch/utilisateur n'ont pas changé pendant la requête.
+                logger.debug("apply() appelée")
                 if (
                     not password_entry.get_text()
                     and self._entries["switch_ip"].get_text().strip() == switch_ip
@@ -861,12 +930,16 @@ class CaptureWindow(Gtk.ApplicationWindow):
                 ):
                     password_entry.set_text(password)
                     self._entries["remember_password"].set_active(True)
+                logger.debug("apply() retourne | fin de fonction")
 
             GLib.idle_add(apply)
+            logger.debug("worker() retourne | recherche lancée en tâche de fond")
 
         threading.Thread(target=worker, daemon=True).start()
+        logger.debug("_maybe_autofill_password() retourne | fin de fonction")
 
     def _on_forget_password(self, _button: Gtk.Button) -> None:
+        logger.debug("_on_forget_password() appelée")
         switch_ip = self._entries["switch_ip"].get_text().strip()
         ssh_user = self._entries["ssh_user"].get_text().strip()
         if not switch_ip or not ssh_user:
@@ -874,12 +947,14 @@ class CaptureWindow(Gtk.ApplicationWindow):
                 _("Champs manquants"),
                 _("Renseignez l'IP du switch et l'utilisateur SSH pour identifier le mot de passe à oublier."),
             )
+            logger.debug("_on_forget_password() retourne | champs manquants")
             return
 
         keepass_path = self._prefs.get("keepass_path") or None
         keepass_master_password = self._resolve_keepass_master_password()
 
         def worker() -> None:
+            logger.debug("worker() appelée | {}@{}", ssh_user, switch_ip)
             removed = delete_ssh_password_from_keyring(switch_ip, ssh_user)
             if not removed and not KEYRING_AVAILABLE:
                 removed = delete_ssh_password_from_keepass(switch_ip, ssh_user, keepass_path, keepass_master_password)
@@ -890,8 +965,10 @@ class CaptureWindow(Gtk.ApplicationWindow):
             )
             GLib.idle_add(self._entries["remember_password"].set_active, False)
             GLib.idle_add(self._show_dialog, _("Mot de passe mémorisé"), message)
+            logger.debug("worker() retourne | suppression effectuée")
 
         threading.Thread(target=worker, daemon=True).start()
+        logger.debug("_on_forget_password() retourne | tâche de fond lancée")
 
     def _row_dropdown(self, key: str, label_text: str, display_options: list[str]) -> Gtk.Widget:
         """Ligne de formulaire générique pour un champ à choix fermé.
@@ -906,12 +983,14 @@ class CaptureWindow(Gtk.ApplicationWindow):
         Returns:
             La ligne (Box) prête à être ajoutée au formulaire.
         """
+        logger.trace("_row_dropdown() appelée")
         box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         box.append(Gtk.Label(label=label_text, xalign=0, width_chars=28))
         dropdown = Gtk.DropDown.new_from_strings(display_options)
         box.append(dropdown)
         self._entries[key] = dropdown
         self._rows[key] = box
+        logger.trace("_row_dropdown() retourne | ligne créée")
         return box
 
     def _row_multiline(self, key: str, label_text: str, hint: str = "") -> Gtk.Widget:
@@ -940,6 +1019,7 @@ class CaptureWindow(Gtk.ApplicationWindow):
             formulaire — un seul widget, pour que `set_visible()` masque
             le champ et son hint ensemble.
         """
+        logger.debug("_row_multiline() appelée")
         outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
         row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         row.append(Gtk.Label(label=label_text, xalign=0, width_chars=28))
@@ -963,9 +1043,11 @@ class CaptureWindow(Gtk.ApplicationWindow):
             outer.append(hint_label)
         self._entries[key] = text_view
         self._rows[key] = outer
+        logger.trace("_row_multiline() retourne | ligne créée")
         return outer
 
     def _row_filter(self) -> Gtk.Widget:
+        logger.trace("_row_filter() appelée")
         box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         box.append(Gtk.Label(label=_("Filtre de capture (tcpdump-like)"), xalign=0, width_chars=28))
         entry = Gtk.Entry(placeholder_text=_("ex: host 10.0.0.5 and tcp port 22"), hexpand=True)
@@ -974,19 +1056,24 @@ class CaptureWindow(Gtk.ApplicationWindow):
         presets = Gtk.DropDown.new_from_strings(preset_names)
 
         def on_preset_changed(dropdown: Gtk.DropDown, _pspec) -> None:
+            logger.debug("on_preset_changed() appelée")
             idx = dropdown.get_selected()
             if idx <= 0:
+                logger.debug("on_preset_changed() retourne | aucun préréglage")
                 return
             name = preset_names[idx]
             entry.set_text(CAPTURE_FILTER_PRESETS[name])
+            logger.debug("on_preset_changed() retourne | préréglage appliqué")
 
         presets.connect("notify::selected", on_preset_changed)
         box.append(presets)
         self._entries["capture_filter"] = entry
         self._rows["capture_filter"] = box
+        logger.trace("_row_filter() retourne | ligne créée")
         return box
 
     def _row_import_bin(self) -> Gtk.Widget:
+        logger.trace("_row_import_bin() appelée")
         box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         box.append(Gtk.Label(label="", xalign=0, width_chars=28))
         btn = Gtk.Button(label=_("Importer un dépôt .bin..."))
@@ -1000,20 +1087,31 @@ class CaptureWindow(Gtk.ApplicationWindow):
         hint.set_ellipsize(Pango.EllipsizeMode.END)
         hint.set_hexpand(True)
         box.append(hint)
+        logger.trace("_row_import_bin() retourne | ligne créée")
         return box
 
     def _on_browse(self, _button: Gtk.Button, entry: Gtk.Entry, select_folder: bool) -> None:
+        logger.debug("_on_browse() appelée | dossier={}", select_folder)
         _choose_path(self, _("Choisir"), select_folder, entry.set_text)
+        logger.debug("_on_browse() retourne | sélecteur ouvert")
 
     def _on_import_bin(self, _button: Gtk.Button) -> None:
+        logger.debug("_on_import_bin() appelée")
+
         def on_path(source_dir: str) -> None:
+            logger.debug("on_path() appelée | source={}", source_dir)
             target_dir = self._entries["feature_bin_dir"].get_text().strip() or None
             self._run_import_bin_async(source_dir, target_dir)
+            logger.debug("on_path() retourne | import lancé")
 
         _choose_path(self, _("Choisir le dossier .bin à importer"), True, on_path)
+        logger.debug("_on_import_bin() retourne | sélecteur ouvert")
 
     def _run_import_bin_async(self, source_dir: str, target_dir: str | None) -> None:
+        logger.debug("_run_import_bin_async() appelée | source={}", source_dir)
+
         def worker() -> None:
+            logger.debug("worker() appelée | source={}", source_dir)
             from switch_capture_cli import run_import_bin
 
             try:
@@ -1030,8 +1128,10 @@ class CaptureWindow(Gtk.ApplicationWindow):
             except Exception as exc:  # noqa: BLE001
                 logger.exception("import_bin | échec")
                 GLib.idle_add(self._show_dialog, _("Échec de l'import"), str(exc))
+            logger.debug("worker() retourne | import terminé")
 
         threading.Thread(target=worker, daemon=True).start()
+        logger.debug("_run_import_bin_async() retourne | tâche de fond lancée")
 
     # ------------------------------------------------------------------ #
     # Page 1 : Configuration (liste de sessions + formulaire d'ajout)
@@ -1042,6 +1142,7 @@ class CaptureWindow(Gtk.ApplicationWindow):
         Returns:
             Le widget racine de la page, prêt à être ajouté au Stack.
         """
+        logger.debug("_build_config_page() appelée")
         scroller = Gtk.ScrolledWindow(vexpand=True, hexpand=True)
         scroller.set_overlay_scrolling(False)
         scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
@@ -1444,6 +1545,7 @@ class CaptureWindow(Gtk.ApplicationWindow):
         self._apply_output_mode_visibility()
         self._apply_mirror_mode_visibility()
 
+        logger.debug("_build_config_page() retourne")
         return scroller
 
     def _apply_capture_type_visibility(self) -> None:
@@ -1452,9 +1554,11 @@ class CaptureWindow(Gtk.ApplicationWindow):
         Les deux méthodes sont mutuellement exclusives dans le formulaire
         (voir commentaire au-dessus du dropdown `capture_type`).
         """
+        logger.trace("_apply_capture_type_visibility() appelée")
         capture_type = self._capture_type_options[self._entries["capture_type"].get_selected()]
         self._packet_capture_box.set_visible(capture_type == "packet-capture")
         self._mirroring_box.set_visible(capture_type == "mirroring")
+        logger.trace("_apply_capture_type_visibility() retourne | type={}", capture_type)
 
     def _apply_mirror_mode_visibility(self) -> None:
         """N'affiche que les champs pertinents pour `mirror_mode`/`mirror_filter_mode`.
@@ -1471,6 +1575,7 @@ class CaptureWindow(Gtk.ApplicationWindow):
         croire qu'ils sont pris en compte alors qu'ils seraient
         silencieusement ignorés.
         """
+        logger.trace("_apply_mirror_mode_visibility() appelée")
         mode = self._mirror_mode_options[self._entries["mirror_mode"].get_selected()]
         filter_mode = self._mirror_filter_mode_options[self._entries["mirror_filter_mode"].get_selected()]
 
@@ -1510,11 +1615,14 @@ class CaptureWindow(Gtk.ApplicationWindow):
             "mirror_reflector_interface",
         ):
             self._rows[key].set_visible(mode == "vxlan" and filter_mode == "port")
+        logger.trace("_apply_mirror_mode_visibility() retourne | mode={}", mode)
 
     def _apply_transfer_mode_visibility(self) -> None:
         """N'affiche `mount_point` que si le mode de transfert est 'sshfs'."""
+        logger.trace("_apply_transfer_mode_visibility() appelée")
         mode = self._transfer_mode_options[self._entries["transfer_mode"].get_selected()]
         self._rows["mount_point"].set_visible(mode == "sshfs")
+        logger.trace("_apply_transfer_mode_visibility() retourne | mode={}", mode)
 
     def _apply_output_mode_visibility(self) -> None:
         """N'affiche que les champs pertinents pour le mode de sortie choisi.
@@ -1524,6 +1632,7 @@ class CaptureWindow(Gtk.ApplicationWindow):
         - rpcap : aucun fichier local — masque tout ce qui concerne le
           ring-buffer/rapatriement, ne garde que le port RPCAP.
         """
+        logger.debug("_apply_output_mode_visibility() appelée")
         mode = self._output_mode_options[self._entries["output_mode"].get_selected()]
 
         file_based_keys = (
@@ -1545,15 +1654,19 @@ class CaptureWindow(Gtk.ApplicationWindow):
         self._rows["tap_pace_max_gap_seconds"].set_visible(mode == "tap")
         self._rows["tap_launch_wireshark"].set_visible(mode == "tap")
         self._rows["rpcap_port"].set_visible(mode == "rpcap")
+        logger.trace("_apply_output_mode_visibility() retourne | mode={}", mode)
 
     def _on_test_connection(self, _button: Gtk.Button) -> None:
+        logger.debug("_on_test_connection() appelée")
         try:
             cfg = self._build_config()
         except ValueError as exc:
             self._show_dialog(_("Configuration incomplète"), str(exc))
+            logger.debug("_on_test_connection() retourne | configuration incomplète")
             return
 
         def worker() -> None:
+            logger.debug("worker() appelée | {}", cfg.switch_ip)
             from switch_capture_core import (
                 connect_switch,
                 detect_model,
@@ -1573,14 +1686,18 @@ class CaptureWindow(Gtk.ApplicationWindow):
             except Exception as exc:  # noqa: BLE001
                 logger.exception("test_connection | échec")
                 GLib.idle_add(self._show_dialog, _("Échec de la connexion"), str(exc))
+            logger.debug("worker() retourne | test effectué")
 
         threading.Thread(target=worker, daemon=True).start()
+        logger.debug("_on_test_connection() retourne | tâche de fond lancée")
 
     def _on_add_session(self, _button: Gtk.Button) -> None:
+        logger.debug("_on_add_session() appelée")
         try:
             cfg = self._build_config()
         except ValueError as exc:
             self._show_dialog(_("Configuration incomplète"), str(exc))
+            logger.debug("_on_add_session() retourne")
             return
 
         session = CaptureSession(cfg)
@@ -1590,6 +1707,7 @@ class CaptureWindow(Gtk.ApplicationWindow):
         self._refresh_start_list()
         self._set_journal_status(f"Capture ajoutée : {session.label}")
         self._maybe_remember_password(cfg)
+        logger.debug("_on_add_session() retourne | session #{}", session.id)
 
     def _build_mirror_config(self) -> MirrorConfig:
         """Construit un MirrorConfig à partir de l'état courant du bloc mirroring.
@@ -1606,17 +1724,28 @@ class CaptureWindow(Gtk.ApplicationWindow):
                 (propagé depuis `MirrorConfig.__post_init__`).
         """
 
+        logger.debug("_build_mirror_config() appelée")
+
         def text(key: str) -> str:
+            logger.debug("text() appelée")
             widget = self._entries[key]
             if isinstance(widget, Gtk.PasswordEntry):
+                logger.debug("text() retourne")
+                logger.debug("_build_mirror_config() retourne")
                 return widget.get_text()
+            logger.debug("text() retourne")
+            logger.debug("_build_mirror_config() retourne")
             return widget.get_text().strip()
 
         def spin(key: str) -> int:
+            logger.debug("_build_mirror_config() retourne")
             return int(self._entries[key].get_value())
 
         def dropdown_value(key: str, values: tuple[str, ...]) -> str:
+            logger.debug("dropdown_value() appelée")
             dropdown: Gtk.DropDown = self._entries[key]
+            logger.debug("dropdown_value() retourne")
+            logger.debug("_build_mirror_config() retourne")
             return values[dropdown.get_selected()]
 
         def multiline(key: str) -> list[str]:
@@ -1625,13 +1754,17 @@ class CaptureWindow(Gtk.ApplicationWindow):
             Équivalent GUI de `--acl-rule` répétable côté CLI
             (`action="append"`) — voir `_row_multiline`.
             """
+            logger.debug("multiline() appelée")
             buffer = self._entries[key].get_buffer()
             start, end = buffer.get_bounds()
             raw = buffer.get_text(start, end, False)
+            logger.debug("multiline() retourne")
+            logger.debug("_build_mirror_config() retourne")
             return [line.strip() for line in raw.splitlines() if line.strip()]
 
         source_interfaces = [iface.strip() for iface in text("mirror_source_interfaces").split(",") if iface.strip()]
 
+        logger.debug("_build_mirror_config() retourne")
         return MirrorConfig(
             switch_ip=text("switch_ip"),
             ssh_user=text("ssh_user"),
@@ -1663,10 +1796,14 @@ class CaptureWindow(Gtk.ApplicationWindow):
         )
 
     def _on_push_mirror(self, _button: Gtk.Button) -> None:
+        logger.debug("_on_push_mirror() appelée")
         self._run_mirror_thread(teardown=False)
+        logger.debug("_on_push_mirror() retourne | fin de fonction")
 
     def _on_teardown_mirror(self, _button: Gtk.Button) -> None:
+        logger.debug("_on_teardown_mirror() appelée")
         self._run_mirror_thread(teardown=True)
+        logger.debug("_on_teardown_mirror() retourne | fin de fonction")
 
     def _run_mirror_thread(self, teardown: bool) -> None:
         """Pousse (ou retire) la configuration de mirroring en tâche de fond.
@@ -1676,25 +1813,30 @@ class CaptureWindow(Gtk.ApplicationWindow):
         uniquement par le CLI `switch-capture mirror`), simplement câblé
         ici sur le bloc mirroring du formulaire GTK.
         """
+        logger.debug("_run_mirror_thread() appelée")
         try:
             mirror_cfg = self._build_mirror_config()
         except ValueError as exc:
             self._show_dialog(_("Configuration de mirroring incomplète"), str(exc))
+            logger.debug("_run_mirror_thread() retourne")
             return
 
         def on_done(success: bool, message: str) -> None:
+            logger.debug("on_done() appelée")
             if success:
                 title = _("Mirroring retiré") if teardown else _("Mirroring configuré")
             else:
                 title = _("Échec du retrait du mirroring") if teardown else _("Échec de la configuration du mirroring")
             GLib.idle_add(self._show_dialog, title, message)
             GLib.idle_add(self._set_journal_status, message)
+            logger.debug("on_done() retourne | fin de fonction")
 
         thread = MirrorThread(mirror_cfg, teardown=teardown, on_done=on_done)
         self._mirror_threads.append(thread)
         thread.start()
         action = "Retrait" if teardown else "Configuration"
         self._set_journal_status(f"{action} du mirroring en cours pour {mirror_cfg.switch_ip} ...")
+        logger.debug("_run_mirror_thread() retourne | fin de fonction")
 
     def _maybe_remember_password(self, cfg: Config) -> None:
         """Mémorise le mot de passe SSH si la case « mémoriser » est cochée.
@@ -1711,18 +1853,24 @@ class CaptureWindow(Gtk.ApplicationWindow):
         incorrect — est signalé explicitement plutôt qu'avalé,
         l'utilisateur ayant coché la case volontairement.
         """
+        logger.debug("_maybe_remember_password() appelée")
         if not self._entries["remember_password"].get_active():
+            logger.debug("_maybe_remember_password() retourne")
             return
 
         if KEYRING_AVAILABLE:
 
             def worker() -> None:
+                logger.debug("worker() appelée")
                 try:
                     save_ssh_password_to_keyring(cfg.switch_ip, cfg.ssh_user, cfg.ssh_password)
                 except RuntimeError as exc:
+                    logger.warning("mémorisation | échec du trousseau système : {}", exc)
                     GLib.idle_add(self._show_dialog, _("Échec de la mémorisation"), str(exc))
+                logger.debug("worker() retourne | fin de fonction")
 
             threading.Thread(target=worker, daemon=True).start()
+            logger.debug("_maybe_remember_password() retourne")
             return
 
         keepass_path = self._prefs.get("keepass_path") or ""
@@ -1737,24 +1885,31 @@ class CaptureWindow(Gtk.ApplicationWindow):
                     "cette capture."
                 ),
             )
+            logger.debug("_maybe_remember_password() retourne")
             return
 
         def worker() -> None:
+            logger.debug("worker() appelée")
             try:
                 save_ssh_password_to_keepass(
                     cfg.switch_ip, cfg.ssh_user, cfg.ssh_password, keepass_path, keepass_master_password
                 )
             except RuntimeError as exc:
+                logger.warning("mémorisation | échec du repli KeePass : {}", exc)
                 GLib.idle_add(self._show_dialog, _("Échec de la mémorisation (KeePass)"), str(exc))
+            logger.debug("worker() retourne | fin de fonction")
 
         threading.Thread(target=worker, daemon=True).start()
+        logger.debug("_maybe_remember_password() retourne | fin de fonction")
 
     def _on_remove_session(self, _button: Gtk.Button, session: CaptureSession) -> None:
+        logger.debug("_on_remove_session() appelée")
         if session in self._sessions:
             self._sessions.remove(session)
         self._refresh_sessions_list()
         self._refresh_install_list()
         self._refresh_start_list()
+        logger.debug("_on_remove_session() retourne | fin de fonction")
 
     @staticmethod
     def _config_to_raw_dict(cfg: Config) -> dict:
@@ -1823,7 +1978,9 @@ class CaptureWindow(Gtk.ApplicationWindow):
         bouton est d'ailleurs désactivé dans ce cas dans
         `_refresh_sessions_list`.
         """
+        logger.debug("_on_edit_session() appelée")
         if session.capture_running:
+            logger.debug("_on_edit_session() retourne")
             return
         if session in self._sessions:
             self._sessions.remove(session)
@@ -1846,8 +2003,10 @@ class CaptureWindow(Gtk.ApplicationWindow):
         self._set_journal_status(
             f"Capture {session.label} retirée de la liste et chargée dans le formulaire pour modification."
         )
+        logger.debug("_on_edit_session() retourne | fin de fonction")
 
     def _refresh_sessions_list(self) -> None:
+        logger.debug("_refresh_sessions_list() appelée")
         self._clear_listbox(self._sessions_list)
         if not self._sessions:
             row = Gtk.ListBoxRow()
@@ -1855,6 +2014,7 @@ class CaptureWindow(Gtk.ApplicationWindow):
                 Gtk.Label(label=_("Aucune capture ajoutée pour l'instant."), xalign=0, margin_top=6, margin_bottom=6)
             )
             self._sessions_list.append(row)
+            logger.debug("_refresh_sessions_list() retourne")
             return
         for session in self._sessions:
             row_box = Gtk.Box(
@@ -1883,6 +2043,7 @@ class CaptureWindow(Gtk.ApplicationWindow):
             row = Gtk.ListBoxRow()
             row.set_child(row_box)
             self._sessions_list.append(row)
+        logger.debug("_refresh_sessions_list() retourne | fin de fonction")
 
     def _on_inspect_session(self, _button: Gtk.Button, session: CaptureSession) -> None:
         """Lance le mode dry run (lecture seule) pour `session`, en tâche de fond.
@@ -1892,9 +2053,11 @@ class CaptureWindow(Gtk.ApplicationWindow):
         commande de configuration n'est jamais envoyée, seulement des
         'display' (voir `inspect_switch`).
         """
+        logger.debug("_on_inspect_session() appelée")
         self._set_journal_status(f"Inspection (dry run) en cours pour {session.label} ...")
 
         def worker() -> None:
+            logger.debug("worker() appelée")
             try:
                 inspect_cfg = InspectConfig(
                     switch_ip=session.cfg.switch_ip,
@@ -1913,31 +2076,40 @@ class CaptureWindow(Gtk.ApplicationWindow):
                 logger.exception("inspect | échec pour {label}", label=session.label)
                 GLib.idle_add(self._show_dialog, _("Échec de l'inspection"), str(exc))
                 GLib.idle_add(self._set_journal_status, f"Inspection en échec pour {session.label} : {exc}")
+            logger.debug("worker() retourne | fin de fonction")
 
         threading.Thread(target=worker, daemon=True, name=f"inspect-{session.id}").start()
+        logger.debug("_on_inspect_session() retourne | fin de fonction")
 
     def _on_uninstall_session(self, _button: Gtk.Button, session: CaptureSession) -> None:
+        logger.debug("_on_uninstall_session() appelée")
         chk_remove_bin = Gtk.CheckButton(label=_("supprimer aussi le .bin de la flash"))
         entry_confirm_ip = Gtk.Entry(placeholder_text=session.cfg.switch_ip, hexpand=True)
 
         def on_response(accepted: bool) -> None:
+            logger.debug("on_response() appelée")
             remove_bin = chk_remove_bin.get_active()
             ip_confirmed = confirm_ip_matches(entry_confirm_ip.get_text(), session.cfg.switch_ip)
             if not accepted or not ip_confirmed:
+                logger.debug("on_response() retourne")
+                logger.debug("_on_uninstall_session() retourne")
                 return
 
             def on_done(success: bool, message: str) -> None:
+                logger.debug("on_done() appelée")
                 GLib.idle_add(
                     self._show_dialog,
                     _("Désinstallation terminée") if success else _("Échec de la désinstallation"),
                     message,
                 )
                 GLib.idle_add(self._set_journal_status, message)
+                logger.debug("on_done() retourne | fin de fonction")
 
             thread = UninstallThread(session.cfg, session.state, remove_bin, on_done)
             self._uninstall_threads.append(thread)
             thread.start()
             self._set_journal_status(f"Désinstallation en cours pour {session.label} ...")
+            logger.debug("on_response() retourne | fin de fonction")
 
         btn_uninstall = _open_form_dialog(
             self,
@@ -1956,9 +2128,12 @@ class CaptureWindow(Gtk.ApplicationWindow):
         btn_uninstall.set_sensitive(False)
 
         def _on_confirm_ip_changed(entry: Gtk.Entry) -> None:
+            logger.debug("_on_confirm_ip_changed() appelée")
             btn_uninstall.set_sensitive(confirm_ip_matches(entry.get_text(), session.cfg.switch_ip))
+            logger.debug("_on_confirm_ip_changed() retourne | fin de fonction")
 
         entry_confirm_ip.connect("changed", _on_confirm_ip_changed)
+        logger.debug("_on_uninstall_session() retourne | fin de fonction")
 
     # ------------------------------------------------------------------ #
     # Lecture du formulaire -> Config
@@ -1977,23 +2152,35 @@ class CaptureWindow(Gtk.ApplicationWindow):
         Raises:
             ValueError: si un champ obligatoire est manquant ou invalide.
         """
+        logger.debug("_build_config() appelée")
 
         def text(key: str) -> str:
+            logger.debug("text() appelée")
             widget = self._entries[key]
             if isinstance(widget, Gtk.PasswordEntry):
+                logger.debug("text() retourne")
+                logger.debug("_build_config() retourne")
                 return widget.get_text()
+            logger.debug("text() retourne")
+            logger.debug("_build_config() retourne")
             return widget.get_text().strip()
 
         def spin(key: str) -> int:
+            logger.debug("_build_config() retourne")
             return int(self._entries[key].get_value())
 
         def check(key: str) -> bool:
+            logger.debug("_build_config() retourne")
             return self._entries[key].get_active()
 
         def dropdown_value(key: str, values: tuple[str, ...]) -> str:
+            logger.debug("dropdown_value() appelée")
             dropdown: Gtk.DropDown = self._entries[key]
+            logger.debug("dropdown_value() retourne")
+            logger.debug("_build_config() retourne")
             return values[dropdown.get_selected()]
 
+        logger.debug("_build_config() retourne")
         return Config(
             switch_ip=text("switch_ip"),
             ssh_user=text("ssh_user"),
@@ -2050,19 +2237,28 @@ class CaptureWindow(Gtk.ApplicationWindow):
             `Config` (hors `ssh_password`/`slot`/`model`/`feature_bin_path`).
         """
 
+        logger.debug("_collect_raw_form_values() appelée")
+
         def text(key: str) -> str:
+            logger.debug("_collect_raw_form_values() retourne")
             return self._entries[key].get_text().strip()
 
         def spin(key: str) -> int:
+            logger.debug("_collect_raw_form_values() retourne")
             return int(self._entries[key].get_value())
 
         def check(key: str) -> bool:
+            logger.debug("_collect_raw_form_values() retourne")
             return self._entries[key].get_active()
 
         def dropdown_value(key: str, values: tuple[str, ...]) -> str:
+            logger.debug("dropdown_value() appelée")
             dropdown: Gtk.DropDown = self._entries[key]
+            logger.debug("dropdown_value() retourne")
+            logger.debug("_collect_raw_form_values() retourne")
             return values[dropdown.get_selected()]
 
+        logger.debug("_collect_raw_form_values() retourne")
         return {
             "switch_ip": text("switch_ip"),
             "ssh_user": text("ssh_user"),
@@ -2109,6 +2305,7 @@ class CaptureWindow(Gtk.ApplicationWindow):
             data: dict key -> valeur, mêmes clés que les champs de
                 `Config` (les clés absentes ou inconnues sont ignorées).
         """
+        logger.debug("_apply_form_values() appelée")
         text_keys = (
             "switch_ip",
             "ssh_user",
@@ -2162,21 +2359,29 @@ class CaptureWindow(Gtk.ApplicationWindow):
 
         self._apply_transfer_mode_visibility()
         self._apply_output_mode_visibility()
+        logger.debug("_apply_form_values() retourne | fin de fonction")
 
     def _on_save_template(self, _button: Gtk.Button) -> None:
+        logger.debug("_on_save_template() appelée")
         name_entry = Gtk.Entry(placeholder_text=_("ex: labo-5130-client"))
 
         def on_response(accepted: bool) -> None:
+            logger.debug("on_response() appelée")
             name = name_entry.get_text()
             if not accepted:
+                logger.debug("on_response() retourne")
+                logger.debug("_on_save_template() retourne")
                 return
             try:
                 values = self._collect_raw_form_values()
                 target = save_capture_template(DEFAULT_MODELS_DIR, name, values)
             except ValueError as exc:
                 self._show_dialog(_("Échec de l'enregistrement"), str(exc))
+                logger.debug("on_response() retourne")
+                logger.debug("_on_save_template() retourne")
                 return
             self._set_journal_status(f"Modèle enregistré : {target}")
+            logger.debug("on_response() retourne | fin de fonction")
 
         _open_form_dialog(
             self,
@@ -2187,8 +2392,10 @@ class CaptureWindow(Gtk.ApplicationWindow):
             _("Enregistrer"),
             on_response,
         )
+        logger.debug("_on_save_template() retourne | fin de fonction")
 
     def _on_load_template(self, _button: Gtk.Button) -> None:
+        logger.debug("_on_load_template() appelée")
         names = list_capture_templates(DEFAULT_MODELS_DIR)
         if not names:
             self._show_dialog(
@@ -2197,13 +2404,17 @@ class CaptureWindow(Gtk.ApplicationWindow):
                     dir=DEFAULT_MODELS_DIR
                 ),
             )
+            logger.debug("_on_load_template() retourne")
             return
 
         dropdown = Gtk.DropDown.new_from_strings(names)
 
         def on_response(accepted: bool) -> None:
+            logger.debug("on_response() appelée")
             idx = dropdown.get_selected()
             if not accepted:
+                logger.debug("on_response() retourne")
+                logger.debug("_on_load_template() retourne")
                 return
             name = names[idx]
             try:
@@ -2211,9 +2422,12 @@ class CaptureWindow(Gtk.ApplicationWindow):
             except (FileNotFoundError, OSError) as exc:
                 logger.exception("chargement du modèle {} | échec", name)
                 self._show_dialog(_("Échec de l'import"), str(exc))
+                logger.debug("on_response() retourne")
+                logger.debug("_on_load_template() retourne")
                 return
             self._apply_form_values(data)
             self._set_journal_status(f"Modèle « {name} » importé dans le formulaire.")
+            logger.debug("on_response() retourne | fin de fonction")
 
         _open_form_dialog(
             self,
@@ -2224,6 +2438,7 @@ class CaptureWindow(Gtk.ApplicationWindow):
             _("Importer"),
             on_response,
         )
+        logger.debug("_on_load_template() retourne | fin de fonction")
 
     # ------------------------------------------------------------------ #
     # Page 2 : Installation (préalable obligatoire à toute capture)
@@ -2234,6 +2449,7 @@ class CaptureWindow(Gtk.ApplicationWindow):
         Returns:
             Le widget racine de la page.
         """
+        logger.debug("_build_install_page() appelée")
         box = Gtk.Box(
             orientation=Gtk.Orientation.VERTICAL,
             spacing=10,
@@ -2269,9 +2485,11 @@ class CaptureWindow(Gtk.ApplicationWindow):
         scroller.set_child(self._install_list)
         box.append(scroller)
 
+        logger.debug("_build_install_page() retourne")
         return box
 
     def _refresh_install_list(self) -> None:
+        logger.debug("_refresh_install_list() appelée")
         any_running = any(s.capture_running for s in self._sessions)
         self._btn_install.set_sensitive(not any_running)
         self._btn_install.set_tooltip_text(
@@ -2283,6 +2501,7 @@ class CaptureWindow(Gtk.ApplicationWindow):
             row = Gtk.ListBoxRow()
             row.set_child(Gtk.Label(label=_("Aucune capture à installer."), xalign=0, margin_top=6, margin_bottom=6))
             self._install_list.append(row)
+            logger.debug("_refresh_install_list() retourne")
             return
 
         status_labels = {
@@ -2313,8 +2532,10 @@ class CaptureWindow(Gtk.ApplicationWindow):
             row = Gtk.ListBoxRow()
             row.set_child(row_box)
             self._install_list.append(row)
+        logger.debug("_refresh_install_list() retourne | fin de fonction")
 
     def _on_install_all(self, _button: Gtk.Button) -> None:
+        logger.debug("_on_install_all() appelée")
         running = [s for s in self._sessions if s.capture_running]
         if running:
             self._show_dialog(
@@ -2324,20 +2545,26 @@ class CaptureWindow(Gtk.ApplicationWindow):
                     "avant de lancer une nouvelle installation."
                 ).format(count=", ".join(s.label for s in running)),
             )
+            logger.debug("_on_install_all() retourne")
             return
 
         pending = [s for s in self._sessions if s.install_status in ("pending", "failed")]
         if not pending:
             self._show_dialog(_("Rien à installer"), _("Toutes les captures sont déjà prêtes (ou la liste est vide)."))
+            logger.debug("_on_install_all() retourne")
             return
 
         for session in pending:
             session.install_status = "running"
             self._start_prepare(session)
         self._refresh_install_list()
+        logger.debug("_on_install_all() retourne | fin de fonction")
 
     def _start_prepare(self, session: CaptureSession) -> None:
+        logger.debug("_start_prepare() appelée")
+
         def worker() -> None:
+            logger.debug("worker() appelée")
             try:
                 session.setup.prepare()
                 session.install_status = "ok"
@@ -2347,8 +2574,10 @@ class CaptureWindow(Gtk.ApplicationWindow):
                 session.install_error = str(exc)
             GLib.idle_add(self._refresh_install_list)
             GLib.idle_add(self._refresh_start_list)
+            logger.debug("worker() retourne | fin de fonction")
 
         threading.Thread(target=worker, daemon=True, name=f"install-{session.id}").start()
+        logger.debug("_start_prepare() retourne | fin de fonction")
 
     # ------------------------------------------------------------------ #
     # Page 3 : Démarrage (gated par l'installation complète)
@@ -2359,6 +2588,7 @@ class CaptureWindow(Gtk.ApplicationWindow):
         Returns:
             Le widget racine de la page.
         """
+        logger.debug("_build_start_page() appelée")
         box = Gtk.Box(
             orientation=Gtk.Orientation.VERTICAL,
             spacing=10,
@@ -2390,15 +2620,18 @@ class CaptureWindow(Gtk.ApplicationWindow):
         scroller.set_child(self._start_list)
         box.append(scroller)
 
+        logger.debug("_build_start_page() retourne")
         return box
 
     def _refresh_start_list(self) -> None:
+        logger.debug("_refresh_start_list() appelée")
         self._clear_listbox(self._start_list)
         if not self._sessions:
             row = Gtk.ListBoxRow()
             row.set_child(Gtk.Label(label=_("Aucune capture."), xalign=0, margin_top=6, margin_bottom=6))
             self._start_list.append(row)
             self._btn_start_all.set_sensitive(False)
+            logger.debug("_refresh_start_list() retourne")
             return
 
         for session in self._sessions:
@@ -2420,10 +2653,13 @@ class CaptureWindow(Gtk.ApplicationWindow):
         all_ready = all(s.install_status == "ok" for s in self._sessions)
         none_running = not any(s.capture_running for s in self._sessions)
         self._btn_start_all.set_sensitive(all_ready and none_running)
+        logger.debug("_refresh_start_list() retourne | fin de fonction")
 
     def _on_start_all(self, _button: Gtk.Button) -> None:
+        logger.debug("_on_start_all() appelée")
         ready = [s for s in self._sessions if s.install_status == "ok" and not s.capture_running]
         if not ready:
+            logger.debug("_on_start_all() retourne")
             return
 
         for session in ready:
@@ -2441,6 +2677,7 @@ class CaptureWindow(Gtk.ApplicationWindow):
         self._refresh_install_list()
         self._set_journal_status(f"{len(ready)} capture(s) démarrée(s).")
         self._stack.set_visible_child_name("journal")
+        logger.debug("_on_start_all() retourne | fin de fonction")
 
     # ------------------------------------------------------------------ #
     # Page 4 : Journal (logs + progression + arrêt global)
@@ -2451,6 +2688,7 @@ class CaptureWindow(Gtk.ApplicationWindow):
         Returns:
             Le widget racine de la page.
         """
+        logger.debug("_build_journal_page() appelée")
         box = Gtk.Box(
             orientation=Gtk.Orientation.VERTICAL,
             spacing=10,
@@ -2489,19 +2727,25 @@ class CaptureWindow(Gtk.ApplicationWindow):
         log_scroller.set_child(self._log_view)
         box.append(log_scroller)
 
+        logger.debug("_build_journal_page() retourne")
         return box
 
     def _set_journal_status(self, text: str) -> None:
+        logger.debug("_set_journal_status() appelée")
         self._journal_status.set_label(text)
+        logger.debug("_set_journal_status() retourne | fin de fonction")
 
     def _on_stop_all(self, _button: Gtk.Button) -> None:
+        logger.debug("_on_stop_all() appelée")
         running = [s for s in self._sessions if s.capture_running]
         if not running:
             self._set_journal_status("Aucune capture en cours à arrêter.")
+            logger.debug("_on_stop_all() retourne")
             return
         for session in running:
             session.state.stop_event.set()
         self._set_journal_status(f"Arrêt de {len(running)} capture(s) en cours ...")
+        logger.debug("_on_stop_all() retourne | fin de fonction")
 
     def _refresh_journal(self) -> bool:
         """Rafraîchit la liste de progression par session (appelé par GLib).
@@ -2509,6 +2753,7 @@ class CaptureWindow(Gtk.ApplicationWindow):
         Returns:
             True pour que GLib continue d'appeler ce callback.
         """
+        logger.debug("_refresh_journal() appelée")
         self._clear_listbox(self._progress_list)
         active_count = 0
         for session in self._sessions:
@@ -2553,6 +2798,7 @@ class CaptureWindow(Gtk.ApplicationWindow):
             pass  # rien à forcer : le statut textuel reste géré par _set_journal_status
         self._refresh_start_list()
         self._refresh_install_list()
+        logger.debug("_refresh_journal() retourne")
         return True
 
     # ------------------------------------------------------------------ #
@@ -2564,6 +2810,7 @@ class CaptureWindow(Gtk.ApplicationWindow):
         Returns:
             Le widget racine de la page.
         """
+        logger.debug("_build_results_page() appelée")
         box = Gtk.Box(
             orientation=Gtk.Orientation.VERTICAL,
             spacing=10,
@@ -2593,18 +2840,22 @@ class CaptureWindow(Gtk.ApplicationWindow):
         results_scroller.set_child(self._results_list)
         box.append(results_scroller)
 
+        logger.debug("_build_results_page() retourne")
         return box
 
     @staticmethod
     def _clear_listbox(listbox: Gtk.ListBox) -> None:
+        logger.debug("_clear_listbox() appelée")
         child = listbox.get_first_child()
         while child is not None:
             next_child = child.get_next_sibling()
             listbox.remove(child)
             child = next_child
+        logger.debug("_clear_listbox() retourne | fin de fonction")
 
     def _refresh_results(self) -> None:
         """Reliste les .pcap de spool_dir/archive_dir de toutes les sessions."""
+        logger.debug("_refresh_results() appelée")
         self._clear_listbox(self._results_list)
 
         total_files = 0
@@ -2621,7 +2872,8 @@ class CaptureWindow(Gtk.ApplicationWindow):
                 for pcap_file in sorted(dir_path.glob("*.pcap")):
                     try:
                         st = pcap_file.stat()
-                    except OSError:
+                    except OSError as exc:
+                        logger.trace("results | fichier disparu avant comptage : {}", exc)
                         continue
                     total_files += 1
                     total_bytes += st.st_size
@@ -2650,21 +2902,26 @@ class CaptureWindow(Gtk.ApplicationWindow):
             self._results_summary.set_label(f"{total_files} fichier(s), {format_size(total_bytes)} au total")
         else:
             self._results_summary.set_label("Aucun fichier .pcap trouvé pour l'instant.")
+        logger.debug("_refresh_results() retourne | fin de fonction")
 
     # ------------------------------------------------------------------ #
     # Fermeture / utilitaires UI
     # ------------------------------------------------------------------ #
     def _on_close_request(self, _window: Gtk.ApplicationWindow) -> bool:
+        logger.debug("_on_close_request() appelée")
         for session in self._sessions:
             if session.capture_running:
                 session.state.stop_event.set()
         if self._prefs_window is not None:
             self._prefs_window.destroy()
             self._prefs_window = None
+        logger.debug("_on_close_request() retourne")
         return False
 
     def _show_dialog(self, title: str, body: str) -> None:
+        logger.debug("_show_dialog() appelée")
         _show_message(self, title, body)
+        logger.debug("_show_dialog() retourne | fin de fonction")
 
     def _drain_log_queue(self) -> bool:
         """Vide LOG_QUEUE dans la console de logs (appelé périodiquement par GLib).
@@ -2672,18 +2929,21 @@ class CaptureWindow(Gtk.ApplicationWindow):
         Returns:
             True pour que GLib continue d'appeler ce callback.
         """
+        logger.debug("_drain_log_queue() appelée")
         end_iter = self._log_buffer.get_end_iter()
         drained = False
         while True:
             try:
                 line = LOG_QUEUE.get_nowait()
-            except queue.Empty:
+            except queue.Empty as exc:
+                logger.trace("_drain_log_queue() | file vide : {}", exc)
                 break
             self._log_buffer.insert(end_iter, line + "\n")
             drained = True
         if drained:
             mark = self._log_buffer.create_mark(None, self._log_buffer.get_end_iter(), False)
             self._log_view.scroll_to_mark(mark, 0.0, False, 0.0, 0.0)
+        logger.debug("_drain_log_queue() retourne")
         return True
 
 
@@ -2710,6 +2970,7 @@ def _print_display_error(exc: Exception) -> None:
     observé entre « marche sans sudo » et « échoue avec sudo, uniquement
     en RDP ». Voir aussi USAGE.md, section « Dépannage ».
     """
+    logger.debug("_print_display_error() appelée")
     sys.stderr.write(
         "\nImpossible d'ouvrir la fenêtre : GTK4 n'a pas pu se connecter à "
         "l'affichage graphique (X11/Wayland).\n"
@@ -2741,12 +3002,14 @@ def _print_display_error(exc: Exception) -> None:
             "définis pour cette session, et que le serveur X/Wayland est "
             "accessible.\n"
         )
+    logger.debug("_print_display_error() retourne | fin de fonction")
 
 
 class CaptureApp(Gtk.Application):
     """Application GTK4 minimale hébergeant CaptureWindow."""
 
     def __init__(self) -> None:
+        logger.debug("__init__() appelée")
         super().__init__(application_id=APP_ID)
         # Positionné à 1 par do_activate si l'affichage graphique n'a pas pu
         # être ouvert — voir _print_display_error. Consulté par main().
@@ -2756,8 +3019,10 @@ class CaptureApp(Gtk.Application):
         # restent à None) — voir _install_sigint_handler/_on_sigint.
         self._window: CaptureWindow | None = None
         self._sigint_source_id: int | None = None
+        logger.debug("__init__() retourne | fin de fonction")
 
     def do_activate(self) -> None:
+        logger.debug("do_activate() appelée")
         _register_app_icon()
         try:
             window = CaptureWindow(self)
@@ -2767,10 +3032,12 @@ class CaptureApp(Gtk.Application):
             self.exit_code = 1
             _print_display_error(exc)
             self.quit()
+            logger.debug("do_activate() retourne")
             return
         self._window = window
         self._install_sigint_handler()
         window.present()
+        logger.debug("do_activate() retourne | fin de fonction")
 
     def _install_sigint_handler(self) -> None:
         """Intercepte Ctrl+C (SIGINT) proprement, via la boucle GLib plutôt
@@ -2800,9 +3067,12 @@ class CaptureApp(Gtk.Application):
         si `do_activate` était un jour appelé plus d'une fois, ex.
         réactivation D-Bus d'une instance déjà lancée).
         """
+        logger.debug("_install_sigint_handler() appelée")
         if self._sigint_source_id is not None:
+            logger.debug("_install_sigint_handler() retourne")
             return
         self._sigint_source_id = GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGINT, self._on_sigint)
+        logger.debug("_install_sigint_handler() retourne | fin de fonction")
 
     def _on_sigint(self) -> bool:
         """Callback GLib déclenché par Ctrl+C (voir _install_sigint_handler).
@@ -2824,9 +3094,11 @@ class CaptureApp(Gtk.Application):
             s'exécuter qu'une fois, la fermeture étant déjà engagée dès le
             premier Ctrl+C.
         """
+        logger.debug("_on_sigint() appelée")
         logger.info("gtk | Ctrl+C reçu, fermeture propre en cours ...")
         if self._window is not None:
             self._window.close()
+        logger.debug("_on_sigint() retourne")
         return False
 
 
@@ -2840,8 +3112,10 @@ def main() -> int:
         d'où ce contrôle explicite), sinon le code retourné par
         Gtk.Application.run().
     """
+    logger.debug("main() appelée")
     app = CaptureApp()
     run_result = app.run(sys.argv[:1])
+    logger.debug("main() retourne")
     return app.exit_code or run_result
 
 
