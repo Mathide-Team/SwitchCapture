@@ -198,8 +198,6 @@ class TestGvfsRemoteVolumeMonitorWarningGone:
         import shutil
 
         if not shutil.which("Xvfb") or not shutil.which("dbus-daemon"):
-            import pytest
-
             pytest.skip("Xvfb ou dbus-daemon absent de cet environnement")
 
         gi_probe = subprocess.run(
@@ -208,8 +206,6 @@ class TestGvfsRemoteVolumeMonitorWarningGone:
             check=False,
         )
         if gi_probe.returncode != 0:
-            import pytest
-
             pytest.skip("GTK4/PyGObject indisponibles dans cet environnement")
 
         # L'avertissement vient du moniteur de volumes distants de GVfs : sans
@@ -218,8 +214,6 @@ class TestGvfsRemoteVolumeMonitorWarningGone:
         # le contournement » n'aurait pas de sens (issue #86).
         moniteurs = Path("/usr/share/gvfs/remote-volume-monitors")
         if not any(moniteurs.glob("*.monitor")):
-            import pytest
-
             pytest.skip(f"GVfs absent ({moniteurs} sans *.monitor) : avertissement impossible à reproduire")
 
         script = r"""
