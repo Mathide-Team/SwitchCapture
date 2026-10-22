@@ -8,10 +8,10 @@ testable sans switch réel ni accès réseau : `prepare()` (détection modèle,
 service de transfert, NTP, push+activation de la feature) et le garde-fou
 de `start_capture_blocking()`. La capture elle-même
 (`_run_capture_blocking_local`/`_run_rpcap_blocking`, qui délèguent à
-`CaptureRotationThread`/Wireshark/FIFO/TAP) reste hors périmètre : elle est
-déjà couverte ailleurs par ses propres fichiers de tests dédiés
-(`test_tap_pacing.py`, `test_tap_injector_thread.py`, etc.) et nécessiterait
-ici une duplication de mocks sans valeur ajoutée.
+`CaptureRotationThread`/Wireshark/FIFO/TAP) est testée dans
+`test_capture_threads_complements.py` (issue #86), avec les doublures de
+ce fichier ; `test_tap_pacing.py` et `test_tap_injector_thread.py` ne
+couvrent que la réinjection TAP.
 
 Même principe que `test_inspect.py` (FakeConn sans switch réel) et
 `test_scp_transfer.py` (mock des globals `open_scp_ssh_client`/`scp_put`) —

@@ -91,6 +91,15 @@ quality = [
     "ruff>=0.16.7",
     "coverage>=7.10.7",
 ]
+# Tests de l'interface GTK4 sous Xvfb (job `gtk` de ci.yml, issue #86) :
+# PyGObject compilé dans le venv contre les bibliothèques système
+# (libgirepository-2.0-dev, libcairo2-dev, gir1.2-gtk-4.0). Groupe de TEST
+# seulement : en usage normal, PyGObject reste le paquet système (voir le
+# commentaire « PyGObject » des dépendances ci-dessus). Invocation :
+# `uv run --group quality --group gtk-test xvfb-run -a coverage run -m pytest -q`.
+gtk-test = [
+    "PyGObject>=3.42",
+]
 
 [tool.ruff]
 line-length = 120
@@ -111,3 +120,17 @@ testpaths = ["tests"]
 
 [tool.coverage.run]
 source = ["src"]
+# Couverture des branches obligatoire (SOCLE §4, Mathilde-Team/.github#9).
+branch = true
+# Chemins relatifs : les mesures du job Qualité (runner maison) et du job
+# `gtk` (ubuntu-latest, Xvfb) sont combinées par `coverage combine` malgré
+# des répertoires de travail différents (issue #86).
+relative_files = true
+
+[tool.coverage.report]
+# Seuil bloquant de l'équipe (décision du 21/10/2026, Mathilde-Team/.github#9),
+# sur la mesure combinée job Qualité + job gtk (interface GTK4 sous Xvfb,
+# issue #86). Déclaré ici seulement, appliqué par `coverage report` dans le
+# job Qualité (seul check requis sur dev).
+fail_under = 95
+show_missing = true
