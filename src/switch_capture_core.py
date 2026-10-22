@@ -2957,9 +2957,10 @@ class SetupAndCaptureThread(threading.Thread):
         """
         logger.debug("_run_capture_blocking_local() appelée")
         conn = connect_switch(self.cfg)
-
-        delete_remote_all_file_capture(conn, self.cfg.capture_prefix)
         try:
+            # Dans le try (issue #86) : un échec du nettoyage (session coupée,
+            # suppression refusée) ne doit pas laisser la session SSH ouverte.
+            delete_remote_all_file_capture(conn, self.cfg.capture_prefix)
             filter_clause = build_capture_filter(
                 self.cfg.switch_ip, self.cfg.capture_filter, self.cfg.hide_capture_traffic
             )

@@ -128,10 +128,9 @@ branch = true
 relative_files = true
 
 [tool.coverage.report]
-# Seuil bloquant de l'équipe : 95 % visé (décision du 21/10/2026,
-# Mathilde-Team/.github#9). Palier (issue #86) : mesure combinée Qualité +
-# GTK sous Xvfb, arrondie à l'entier inférieur ; à relever à chaque PR de
-# tests. Déclaré ici seulement, appliqué par `coverage report` dans le job
-# Qualité (seul check requis sur dev).
-fail_under = 84
+# Seuil bloquant de l'équipe (décision du 21/10/2026, Mathilde-Team/.github#9),
+# sur la mesure combinée job Qualité + job gtk (interface GTK4 sous Xvfb,
+# issue #86). Déclaré ici seulement, appliqué par `coverage report` dans le
+# job Qualité (seul check requis sur dev).
+fail_under = 95
 show_missing = true

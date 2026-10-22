@@ -298,10 +298,15 @@ sys.exit(app.run(None))
             xvfb.terminate()
             xvfb.wait(timeout=5)
 
-        assert "GVFS-RemoteVolumeMonitor" in stderr_without, (
-            "avertissement GVfs attendu absent sans le contournement (environnement "
-            f"peut-être trop différent de celui de reproduction) — stderr : {stderr_without!r}"
-        )
         assert "GVFS-RemoteVolumeMonitor" not in stderr_with, (
             f"avertissement GVfs toujours présent malgré le contournement — stderr : {stderr_with!r}"
         )
+        # Condition préalable, pas résultat : même avec GVfs installé,
+        # l'avertissement dépend de la version de GVfs et de la session D-Bus
+        # (reproduit sous Ubuntu 26.04, absent sous Ubuntu 24.04 du job gtk,
+        # issue #86). Sans reproduction, le test ne prouve rien : il se saute.
+        if "GVFS-RemoteVolumeMonitor" not in stderr_without:
+            pytest.skip(
+                "avertissement GVfs non reproduit sans le contournement dans cet environnement "
+                f"(stderr : {stderr_without!r})"
+            )
