@@ -212,6 +212,16 @@ class TestGvfsRemoteVolumeMonitorWarningGone:
 
             pytest.skip("GTK4/PyGObject indisponibles dans cet environnement")
 
+        # L'avertissement vient du moniteur de volumes distants de GVfs : sans
+        # moniteur installé (paquet gvfs absent, cas des conteneurs et des
+        # runners CI), il ne peut pas se produire et l'assertion « présent sans
+        # le contournement » n'aurait pas de sens (issue #86).
+        moniteurs = Path("/usr/share/gvfs/remote-volume-monitors")
+        if not any(moniteurs.glob("*.monitor")):
+            import pytest
+
+            pytest.skip(f"GVfs absent ({moniteurs} sans *.monitor) : avertissement impossible à reproduire")
+
         script = r"""
 import faulthandler, sys
 faulthandler.enable()
@@ -245,10 +255,18 @@ sys.exit(app.run(None))
 """
         import time
 
-        display = ":97"
-        xvfb = subprocess.Popen(["Xvfb", display, "-screen", "0", "1280x1024x24"])
+        # Affichage libre choisi par Xvfb (`-displayfd`) plutôt qu'un numéro
+        # fixe déjà pris sur certaines machines ; la lecture bloque jusqu'à ce
+        # que le serveur soit prêt.
+        lecture, ecriture = os.pipe()
+        xvfb = subprocess.Popen(
+            ["Xvfb", "-displayfd", str(ecriture), "-screen", "0", "1280x1024x24", "-nolisten", "tcp"],
+            pass_fds=(ecriture,),
+        )
+        os.close(ecriture)
         try:
-            time.sleep(1)
+            with os.fdopen(lecture) as flux:
+                display = ":" + flux.readline().strip()
             dbus_out = subprocess.run(
                 ["dbus-daemon", "--session", "--print-address=1", "--print-pid=1", "--fork"],
                 capture_output=True,
