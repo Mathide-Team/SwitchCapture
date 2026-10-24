@@ -180,8 +180,10 @@ seul à traiter à la fois) :
    réel HPE confirmé pour 5130/5140 (`"5130-28-HI"`) — nécessite un
    exemple réel de sortie `display version` pour un 5510/5520 avant de
    corriger à l'aveugle (aucun disponible dans ce dépôt à ce jour).
-3. Relecture linguistique du `.po` en_US par une personne anglophone
-   native — tâche non automatisable, en attente depuis la session 33.
+3. Relecture linguistique du `.po` en_US : faite par IA le 24/10/2026
+   (issue #67, accord de Mathilde du 13/10 faute d'anglophone natif),
+   mention « relu par IA » dans `Last-Translator`. Une relecture native
+   reste bienvenue si l'occasion se présente.
 4. Poursuivre l'audit de couverture (session 51-52-53-54-58-61-62) sur les
    lignes restantes de `switch_capture_core.py` (**88 %, 177 lignes non
    couvertes** depuis la session 64). Le **triage par fonction**, jamais fait avant la session
