@@ -2,14 +2,15 @@
 # Copyright (C) 2026 Transcende
 # This file is distributed under the same license as the switch-capture package.
 # Automatically generated, 2026.
+# Relecture complète par IA le 24/10/2026, faute de relecteur anglophone natif (issue #67).
 #
 msgid ""
 msgstr ""
 "Project-Id-Version: switch-capture\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2026-09-06 07:32+0000\n"
-"PO-Revision-Date: 2026-09-05 19:00+0000\n"
-"Last-Translator: Automatically generated\n"
+"PO-Revision-Date: 2026-10-24 16:00+0000\n"
+"Last-Translator: relu par IA (issue #67)\n"
 "Language-Team: none\n"
 "Language: en_US\n"
 "MIME-Version: 1.0\n"
@@ -37,11 +38,10 @@ msgid ""
 "ni SWITCH_SSH_PASSWORD. Nécessite le module Python 'keyring' (dépendance "
 "optionnelle)."
 msgstr ""
-"Remembers the SSH password used in the system keyring (libsecret/GNOME "
-"Keyring, never stored in plain text on disk) for this switch/user pair — "
-"subsequent runs pick it up automatically without --ssh-password or "
-"SWITCH_SSH_PASSWORD. Requires the Python 'keyring' module (optional "
-"dependency)."
+"Stores the SSH password used in the system keyring (libsecret/GNOME Keyring, "
+"never in plain text on disk) for this switch/user pair — subsequent runs "
+"retrieve it automatically, without --ssh-password or SWITCH_SSH_PASSWORD. "
+"Requires the Python 'keyring' module (optional dependency)."
 
 #: switch_capture_cli.py:307 switch_capture_cli.py:688
 msgid ""
@@ -72,7 +72,7 @@ msgstr ""
 msgid ""
 "Force le profil matériel au lieu de l'auto-détection ('display version')"
 msgstr ""
-"Forces the hardware profile instead of auto-detection ('display version')"
+"Forces the hardware profile instead of auto-detecting it ('display version')"
 
 #: switch_capture_cli.py:330
 msgid "Chemin exact du .bin à pousser (prioritaire sur --feature-bin-dir)"
@@ -118,7 +118,7 @@ msgstr ""
 
 #: switch_capture_cli.py:381
 msgid "Saute complètement la vérification NTP (active par défaut)"
-msgstr "Skips the NTP check entirely (enabled by default)"
+msgstr "Skips the NTP check entirely (the check runs by default)"
 
 #: switch_capture_cli.py:388
 msgid ""
@@ -155,11 +155,10 @@ msgid ""
 "fenêtre par capture au lieu d'une seule observant toutes les interfaces — "
 "voir USAGE.md"
 msgstr ""
-"Automatically launches Wireshark on the TAP interface as soon as it's ready "
-"(disabled by default, the user otherwise does it themselves). Only has an "
-"effect in --output-mode tap. With several simultaneous captures, opens one "
-"window per capture instead of a single one watching all interfaces — see "
-"USAGE.md"
+"Automatically launches Wireshark on the TAP interface as soon as it is ready "
+"(disabled by default: you then start it yourself). Only has an effect in "
+"--output-mode tap. With several simultaneous captures, opens one window per "
+"capture instead of a single one watching all interfaces — see USAGE.md"
 
 #: switch_capture_cli.py:425
 msgid ""
@@ -194,9 +193,8 @@ msgid ""
 "défaut, en plus du filtre --capture-filter le cas échéant). Sans effet en --"
 "output-mode rpcap"
 msgstr ""
-"No longer excludes tool<->switch SSH/SCP traffic from the capture (excluded "
-"by default, in addition to the --capture-filter if any). No effect in --"
-"output-mode rpcap"
+"Includes the tool<->switch SSH/SCP traffic in the capture (excluded by "
+"default, on top of --capture-filter if set). No effect in --output-mode rpcap"
 
 #: switch_capture_cli.py:462
 msgid ""
@@ -222,7 +220,7 @@ msgstr ""
 
 #: switch_capture_cli.py:503
 msgid "Orchestrateur de capture packet-capture pour switches HPE Comware"
-msgstr "packet-capture orchestrator for HPE Comware switches"
+msgstr "Orchestrator for the packet-capture feature of HPE Comware switches"
 
 #: switch_capture_cli.py:509
 msgid "Lance une capture (bloquant, Ctrl+C pour arrêter)"
@@ -247,9 +245,9 @@ msgid ""
 "utiliser en cron/systemd : la commande attendrait une entrée standard qui "
 "n'arrivera jamais."
 msgstr ""
-"Asks to retype --switch-ip interactively before proceeding (extra safeguard "
-"for a manual production run). Do not use in cron/systemd: the command would "
-"wait for standard input that will never arrive."
+"Prompts you to retype --switch-ip interactively before proceeding (extra "
+"safeguard for a manual production run). Do not use in cron/systemd: the "
+"command would wait for standard input that will never arrive."
 
 #: switch_capture_cli.py:534
 msgid ""
@@ -274,8 +272,8 @@ msgid ""
 "deb, .rpm, install.sh)."
 msgstr ""
 "Target folder (default: /etc/switch-capture/feature-bin if it already "
-"exists, otherwise ./feature-bin). Identical regardless of the installation "
-"method (.deb, .rpm, install.sh)."
+"exists, otherwise ./feature-bin). The same for every installation method "
+"(.deb, .rpm, install.sh)."
 
 #: switch_capture_cli.py:553
 msgid ""
@@ -295,11 +293,11 @@ msgid ""
 "physique — combinaison non officiellement documentée par H3C, imposée par "
 "retour d'expérience direct de l'utilisateur (voir features.md)"
 msgstr ""
-"'local': SPAN, direct cable to the capture host. 'gre': ERSPAN tunnel-mode "
-"to a remote collector. 'vxlan': mirroring to a probe VLAN (--remote-probe-"
-"vlan), carried over L2 VXLAN extension instead of a physical trunk — "
-"combination not officially documented by H3C, mandated based on the user's "
-"direct field experience (see features.md)"
+"'local': SPAN, direct cable to the capture host. 'gre': ERSPAN tunnel mode "
+"to a remote collector. 'vxlan': mirroring to a probe VLAN "
+"(--remote-probe-vlan), carried over an L2 VXLAN extension instead of a "
+"physical trunk — a combination not officially documented by H3C, required "
+"here based on the user's direct field experience (see features.md)"
 
 #: switch_capture_cli.py:574
 msgid "Interface source à mirrorer (répétable pour en mirrorer plusieurs)"
@@ -384,14 +382,14 @@ msgstr ""
 msgid ""
 "(filter-mode acl) numéro d'ACL avancée Comware (3000-3999, 3998/3999 exclus)"
 msgstr ""
-"(acl filter-mode) Comware advanced ACL number (3000-3999, 3998/3999 excluded)"
+"(filter-mode acl) Comware advanced ACL number (3000-3999, except 3998/3999)"
 
 #: switch_capture_cli.py:641
 msgid ""
 "(filter-mode acl, obligatoire) règle ACL avancée complète, ex. 'rule 0 "
 "permit ip source 10.0.0.5 0' (répétable pour en définir plusieurs)"
 msgstr ""
-"(acl filter-mode, required) full advanced ACL rule, e.g. 'rule 0 permit ip "
+"(filter-mode acl, required) full advanced ACL rule, e.g. 'rule 0 permit ip "
 "source 10.0.0.5 0' (repeatable to define several)"
 
 #: switch_capture_cli.py:647
@@ -399,32 +397,32 @@ msgid ""
 "(filter-mode acl, optionnel) nom du traffic classifier Comware — déduit de --"
 "group-id si omis"
 msgstr ""
-"(acl filter-mode, optional) Comware traffic classifier name — derived from --"
-"group-id if omitted"
+"(filter-mode acl, optional) Comware traffic classifier name — derived from "
+"--group-id if omitted"
 
 #: switch_capture_cli.py:651
 msgid ""
 "(filter-mode acl, optionnel) nom du traffic behavior Comware — déduit de --"
 "group-id si omis"
 msgstr ""
-"(acl filter-mode, optional) Comware traffic behavior name — derived from --"
-"group-id if omitted"
+"(filter-mode acl, optional) Comware traffic behavior name — derived from "
+"--group-id if omitted"
 
 #: switch_capture_cli.py:655
 msgid ""
 "(filter-mode acl, optionnel) nom de la qos policy Comware — déduit de --"
 "group-id si omis"
 msgstr ""
-"(acl filter-mode, optional) Comware qos policy name — derived from --group-"
-"id if omitted"
+"(filter-mode acl, optional) Comware QoS policy name — derived from "
+"--group-id if omitted"
 
 #: switch_capture_cli.py:659
 msgid ""
 "Retire la configuration au lieu de la pousser (undo mirroring-group/policy "
 "ACL + tunnel éventuel)"
 msgstr ""
-"Removes the configuration instead of pushing it (undoes mirroring-group/ACL "
-"policy + tunnel if any)"
+"Removes the configuration instead of pushing it (undo mirroring-group/ACL "
+"policy, and the tunnel if any)"
 
 #: switch_capture_cli.py:665
 msgid ""
@@ -440,7 +438,7 @@ msgid ""
 "Mémorise le mot de passe SSH utilisé dans le trousseau système (voir "
 "'capture --help')."
 msgstr ""
-"Remembers the SSH password used in the system keyring (see 'capture --help')."
+"Stores the SSH password used in the system keyring (see 'capture --help')."
 
 #: switch_capture_cli.py:693
 msgid ""
@@ -479,12 +477,13 @@ msgid ""
 "Analyse les écarts inter-trames d'un .pcap déjà rapatrié, pour choisir une "
 "valeur de --tap-pace-max-gap (voir features.md, section « Pas fait »)"
 msgstr ""
-"Analyzes the inter-frame gaps of an already-retrieved .pcap file, to help "
-"choose a --tap-pace-max-gap value (see features.md, \"Not done\" section)"
+"Analyzes the inter-frame gaps of an already retrieved .pcap file, to help "
+"choose a --tap-pace-max-gap value (see features.md, \"Pas fait\" (not done) "
+"section)"
 
 #: switch_capture_cli.py:726
 msgid "Fichier .pcap classique (pas pcapng) déjà rapatrié à analyser"
-msgstr "Classic .pcap file (not pcapng) already retrieved, to analyze"
+msgstr "Already retrieved classic .pcap file (not pcapng) to analyze"
 
 #: switch_capture_cli.py:734
 msgid ""
@@ -605,7 +604,7 @@ msgstr "See the log for details."
 msgid ""
 "pour modifier une capture : supprimez-la puis recréez-la avec le formulaire "
 "ci-dessous"
-msgstr "to edit a capture: delete it then recreate it with the form below"
+msgstr "to edit a capture: delete it, then recreate it with the form below"
 
 #: switch_capture_gtk.py:977
 msgid ""
@@ -679,11 +678,11 @@ msgstr "Failed to configure mirroring"
 
 #: switch_capture_gtk.py:1475
 msgid "Échec de la mémorisation"
-msgstr "Failed to remember password"
+msgstr "Failed to remember the password"
 
 #: switch_capture_gtk.py:1484
 msgid "Mémorisation impossible"
-msgstr "Cannot remember password"
+msgstr "Cannot remember the password"
 
 #: switch_capture_gtk.py:1486
 msgid ""
@@ -699,7 +698,7 @@ msgstr ""
 
 #: switch_capture_gtk.py:1500
 msgid "Échec de la mémorisation (KeePass)"
-msgstr "Failed to remember password (KeePass)"
+msgstr "Failed to remember the password (KeePass)"
 
 #: switch_capture_gtk.py:1606
 msgid "Aucune capture ajoutée pour l'instant."
@@ -817,7 +816,7 @@ msgstr "Nothing to install"
 
 #: switch_capture_gtk.py:2063
 msgid "Toutes les captures sont déjà prêtes (ou la liste est vide)."
-msgstr "All captures are already ready (or the list is empty)."
+msgstr "All captures are already prepared (or the list is empty)."
 
 #: switch_capture_gtk.py:2098
 msgid ""
